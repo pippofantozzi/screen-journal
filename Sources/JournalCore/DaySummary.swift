@@ -116,8 +116,9 @@ extension [DayDigest.Transition] {
 }
 
 /// Shared markdown formatting for day and week summaries.
-enum Format {
-    static func clock(_ seconds: TimeInterval) -> String {
+public enum Format {
+    /// "48m" or "2h05m", as summary.md shows durations.
+    public static func clock(_ seconds: TimeInterval) -> String {
         let minutes = Int(seconds / 60)
         return minutes >= 60 ? "\(minutes / 60)h\(String(format: "%02d", minutes % 60))m" : "\(minutes)m"
     }

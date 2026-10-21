@@ -219,3 +219,27 @@ struct CodingTests {
         #expect(decoded == [record, record])
     }
 }
+
+struct SettledWindowTests {
+    func window(_ bundleID: String, _ title: String?, x: CGFloat = 0) -> WindowInfo {
+        WindowInfo(app: bundleID, bundleID: bundleID, title: title, bounds: CGRect(x: x, y: 0, width: 500, height: 500), layer: 0)
+    }
+
+    @Test func sameWindowIsSettledEvenIfItMoved() {
+        #expect(WindowPlacement.settled(before: window("ghostty", "zsh"), after: window("ghostty", "zsh", x: 40)))
+        #expect(WindowPlacement.settled(before: nil, after: nil))
+    }
+
+    @Test(arguments: [
+        ("app switched", "chrome", "zsh"),
+        ("title changed", "ghostty", "Verify"),
+    ])
+    func switchMidCaptureIsNotSettled(_ name: String, bundleID: String, title: String) {
+        #expect(!WindowPlacement.settled(before: window("ghostty", "zsh"), after: window(bundleID, title)), "\(name)")
+    }
+
+    @Test func windowAppearingOrClosingIsNotSettled() {
+        #expect(!WindowPlacement.settled(before: nil, after: window("ghostty", "zsh")))
+        #expect(!WindowPlacement.settled(before: window("ghostty", "zsh"), after: nil))
+    }
+}

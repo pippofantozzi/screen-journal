@@ -5,11 +5,11 @@ public enum JournalCoding {
     public static func line<T: Encodable>(_ value: T, timeZone: TimeZone) throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = timeZone
+        // Same text as ISO8601DateFormatter ("2026-10-21T19:28:12-03:00"), but a Sendable value.
+        let style = Date.ISO8601FormatStyle(timeZoneSeparator: .colon, timeZone: timeZone)
         encoder.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(formatter.string(from: date))
+            try container.encode(date.formatted(style))
         }
         return String(decoding: try encoder.encode(value), as: UTF8.self)
     }

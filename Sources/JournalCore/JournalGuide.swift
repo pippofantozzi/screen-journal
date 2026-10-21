@@ -1,7 +1,7 @@
 /// Files the app keeps in the journal root so a Claude Code session there knows how to read it.
 /// Bump `version` whenever the text changes; the app rewrites stale copies on launch.
 public enum JournalGuide {
-    public static let version = 2
+    public static let version = 3
     public static let marker = "<!-- screen-journal-guide v\(version) -->"
 
     public static let skills: [(name: String, contents: String)] = [
@@ -25,7 +25,9 @@ public enum JournalGuide {
 
     ## Privacy
     - Everything here stays on this Mac. Screenshots and screen text never go to any website, API, or other service.
-    - Skip anything personal, medical, financial, or other people's private messages unless she raises it herself.
+    - Her own work data (dashboards, product metrics, invoices she handles) is fine to summarize. Skip anything personal or medical, and never quote personal banking, card numbers or salaries. Describe money figures without quoting exact amounts unless she asks for them.
+    - Other people's messages in chats, mail and any inbox (CRM consoles, support tools) are never quoted or summarized; describe them at window level: who, when, how often.
+    - Skip anything else personal unless she raises it herself.
     - Gaps in time mean paused, idle, locked, or a private app or private browsing window was in front. Password managers and apps she excluded are never captured. Leave gaps unexplained.
 
     ## Skills
@@ -76,18 +78,20 @@ public enum JournalGuide {
     ### events.jsonl
     `at`, `kind`, and per kind: `started` (`version`), `stopped`, `appSwitch` (`app`, `bundleID`), `note` (`text`, plus the `app`, `bundleID`, `windowTitle` and `frameID` on screen when she wrote it). Gap markers: `paused`, `idle`, `locked`, `skipped` (private app or window in front), `active` (capture resumed).
 
+    A `stopped` followed by `started` is the app restarting (an update or a quit), not a gap in her work. An `idle` at the same second as `started` means she was away when it relaunched.
+
     Notes are moments she flagged on purpose: the strongest signal in the journal.
 
     ## Reading cheaply
-    Text first, images last. A week holds tens of thousands of rows; open a screenshot only to confirm something specific, a handful at a time. Timestamps are local ISO-8601 with offset, so plain string comparison orders them; compare minutes with `.start[0:16]` so `2026-10-21T19:00` includes 19:00:45.
+    Text first, images last. A week holds tens of thousands of rows; open a screenshot only to confirm something specific, a handful at a time. Timestamps are local ISO-8601 with offset, so plain string comparison orders them: compare to the second with `.start[0:19]`, or to the minute with `.start[0:16]`.
 
     ```sh
     # Notes with where she was
     jq -r 'select(.kind == "note") | "\(.at[0:16])  \(.app // "?") — \(.windowTitle // "")\n    \(.text)"' days/*/events.jsonl
 
-    # Minutes per app over the last 7 days
+    # Minutes per app between two dates (inclusive); the $(ls … awk …) part lists those days' digests for any recipe
     jq -rs '[.[].apps[]] | group_by(.name) | map({app: .[0].name, min: (map(.seconds) | add / 60 | round)}) | sort_by(-.min)[] | "\(.min)m\t\(.app)"' \
-      $(ls -d days/* | tail -7 | sed 's|$|/.digest.json|')
+      $(ls -d days/* | awk -v from=2026-10-15 -v to=2026-10-21 '{d = substr($0, 6)} d >= from && d <= to {print $0 "/.digest.json"}')
 
     # When something was on screen, as time ranges (q is a case-insensitive regex: list variants with |)
     jq -rs --arg q 'whats ?app|wnatsap' 'def t: sub("[-+][0-9]{2}:[0-9]{2}$"; "Z") | fromdate;
@@ -101,19 +105,25 @@ public enum JournalGuide {
     # Sessions in one app
     jq -r 'select(.app == "Microsoft Excel") | [.start[0:16], .end[11:16], .windowTitle] | @tsv' days/*/sessions.jsonl
 
-    # Everything seen in the window on display 1 so far at a moment: last row with `text`, plus every later `newLines`
-    jq -rs --arg at 2026-10-21T15:00 --argjson display 1 '
-      [.[] | select(.display == $display and .start[0:16] <= $at)]
-      | (map(has("text")) | rindex(true)) as $i
-      | if $i == null then "nothing captured on this display yet at that time"
-        else .[$i:] | "\(.[0].start[11:19])  \(.[0].app // "?") — \(.[0].windowTitle // "")", .[0].text, (.[1:][].newLines // [] | .[]) end' days/2026-10-21/frames.jsonl
+    # The screen in front of her at a moment (to the second): the focused row covering it, or else the last one before it,
+    # then that window's text so far (last row with `text` on that display, plus every later `newLines`)
+    jq -rs --arg at 2026-10-21T15:00:00 '
+      (map(select(.focused and .start[0:19] <= $at)) | (map(select(.end[0:19] >= $at)) | last) // last) as $row
+      | if $row == null then "nothing captured yet at that time" else
+          [.[] | select(.display == $row.display and .start <= $row.start)]
+          | (map(has("text")) | rindex(true)) as $i
+          | "\($row.start[11:19])–\($row.end[11:19])  \($row.app // "?") — \($row.windowTitle // "")\(if $row.end[0:19] < $at then "  (last screen before that time)" else "" end)",
+            (if $i == null then "(no text)" else .[$i:] | .[0].text, (.[1:][].newLines // [] | .[]) end)
+        end' days/2026-10-21/frames.jsonl
 
     # Durations from timestamps (the offset is the same on both ends, so drop it)
     jq -rs 'def t: sub("[-+][0-9]{2}:[0-9]{2}$"; "Z") | fromdate;
       group_by(.app) | map({app: (.[0].app // "Unknown"), min: (map((.end | t) - (.start | t)) | add / 60 | round)}) | sort_by(-.min)[] | "\(.min)m\t\(.app)"' \
       days/2026-10-21/sessions.jsonl
 
-    # View a screenshot: Read can't open .heic, so convert a temporary local copy, Read it, then delete it
+    # View a screenshot: Read can't open .heic, so convert a temporary local copy, Read it, then delete it.
+    # A row's `image` may come from an earlier row in the same visit; its time is in the filename (HHMMSS).
+    # Prefer rows that own their image: select(.image == "frames/\(.id).heic")
     mkdir -p /tmp/sj-view && sips -s format jpeg -Z 1600 days/2026-10-21/frames/185442-d1.heic --out /tmp/sj-view/185442-d1.jpg >/dev/null
     rm -rf /tmp/sj-view   # when done
     ```
@@ -132,10 +142,10 @@ public enum JournalGuide {
     Goal: a short ranked list of concrete automations, each backed by evidence from the journal, then working helpers for the ones she picks.
 
     ## 1. Orient
-    - Read every file in `reviews/` named `*-automations.md`. Carry forward what she already picked, built, or rejected; this run adds to it.
-    - Read `week.md`, `index.md`, and all notes (recipe in `CLAUDE.md`).
-    - Count the captured days (`ls days | wc -l`). Under 3 days, tell her up front that this is an early look, label every candidate "seen once / early signal", and suggest coming back after a week of capture.
-    - Ask her two or three short questions: what her job involves, which tools she must use as-is, what feels most tedious. Done when you know her role and her fixed tools.
+    - If `reviews/` exists, read every file in it. Carry forward what she already picked, built, or rejected; this run adds to it.
+    - Count the captured days (`ls days | wc -l`). Under 3 days, tell her up front that this is an early look, and suggest coming back after a week of capture.
+    - Read `index.md`, all notes (recipe in `CLAUDE.md`), and `week.md` (with one day of data, `week.md` repeats `summary.md`: skip it).
+    - Ask her two or three short questions: what her job involves, which tools she must use as-is, what feels most tedious. Then end your turn and wait for her answers before step 2.
 
     ## 2. Find repetition
     Look for patterns across days. Check every lens:
@@ -144,7 +154,7 @@ public enum JournalGuide {
     - **Rekeying**: the same email, ID, or amount showing up in two different windows within minutes. Per day, this prints each value seen in 2+ windows, with when and where:
       ```sh
       jq -r 'select(.focused and ((.app // "Unknown") | IN("Unknown", "UserNotificationCenter", "universalAccessAuthWarn", "SecurityAgent", "CoreServicesUIAgent", "loginwindow", "Screen Journal") | not))
-        | "\(.app) — \(.windowTitle // "" | sub("^(\\([0-9]+\\) |[^[:alnum:]]+ )"; ""))" as $win | .start[11:16] as $t
+        | "\(.app) — \(.windowTitle // "")" as $win | .start[11:16] as $t
         | [.text // "", (.newLines // [])[]] | join("\n")
         | (scan("[[:alnum:]._%+-]+@[[:alnum:]-]+\\.[[:alnum:].-]+"),
            scan("(?:R\\$|US\\$|\\$|€|£) ?[0-9][0-9.,]*[0-9]"),
@@ -154,8 +164,19 @@ public enum JournalGuide {
         | [., $win, $t] | @tsv' days/DAY/frames.jsonl \
       | sort -u | awk -F'\t' '!seen[$1 FS $2]++ { wins[$1]++; where[$1] = where[$1] "  " $3 " " $2 } END { for (k in wins) if (wins[k] > 1) print wins[k] "\t" k "\t" where[k] }' | sort -rn | head -40
       ```
-      It skips system popups, version numbers, dates and short numbers. Add any other system popup apps you notice to the `IN(...)` list.
-    - **Data entry**: long sessions in one window with many frames, each adding a few `newLines`.
+      It skips system popups, version numbers, dates and short numbers. Add any other system popup apps you notice to the `IN(...)` list. Amounts are evidence: describe them ("the same amounts in the console and in WhatsApp"), don't quote them.
+    - **Data entry**: one window visit with many frames, most of them adding `newLines` (form filling, spreadsheets). Per day:
+      ```sh
+      jq -rs 'def t: sub("[-+][0-9]{2}:[0-9]{2}$"; "Z") | fromdate;
+        [.[] | select(.focused)] | sort_by(.start)
+        | reduce .[] as $r ([]; ("\($r.app // "?") — \($r.windowTitle // "")") as $w | ($r.newLines // [] | length) as $n
+            | if length > 0 and .[-1].window == $w
+              then .[-1].end = $r.end | .[-1].frames += 1 | .[-1].lines += $n | .[-1].growing += (if $n > 0 then 1 else 0 end)
+              else . + [{window: $w, start: $r.start, end: $r.end, frames: 1, lines: $n, growing: (if $n > 0 then 1 else 0 end)}] end)
+        | map(select(.frames >= 6 and .growing >= .frames / 2))
+        | sort_by(-.frames)[] | "\(.start[0:16])–\(.end[11:16])  \(((.end | t) - (.start | t)) / 60 | round)m  \(.frames) frames, \(.lines) new lines  \(.window)"' days/DAY/frames.jsonl
+      ```
+      Chats and terminals scroll too; keep visits where the new lines look like typed-in or pasted values.
     - **Flagged moments**: each note, plus what she did in the five minutes before it. Per day:
       ```sh
       jq -rn 'def t: sub("[-+][0-9]{2}:[0-9]{2}$"; "Z") | fromdate;
@@ -167,12 +188,12 @@ public enum JournalGuide {
         days/DAY/events.jsonl days/DAY/frames.jsonl
       ```
 
-    For each candidate collect: days seen, minutes per week, apps involved, two or three timestamps, and one screenshot you actually opened to confirm it (recipe in `CLAUDE.md`).
-
-    In messaging apps (WhatsApp, Messages, Slack, mail) stay at window level: who, when, how often. Other people's messages are never quoted or summarized.
+    For each candidate collect: days seen, minutes per week, apps involved, two or three timestamps, and one screenshot you actually opened to confirm it (recipe in `CLAUDE.md`). Screenshots can show other people's chats; those stay unquoted.
 
     ## 3. Rank and save
     Score each candidate as weekly minutes × repeatability × feasibility. Feasibility means the data is reachable through an API, AppleScript, Shortcuts, browser automation, or files. Show her the top 5–10 as a table with one plain sentence each on how it would work, and say which look hard.
+
+    Under 3 days of data, skip the score: list observed minutes and how many times each was seen, label each "early signal", and still say how it would work.
 
     `mkdir -p reviews`, then save the table and the evidence to `reviews/YYYY-MM-DD-automations.md` (today's date). Done when the file exists and she has seen the list.
 
@@ -200,28 +221,32 @@ public enum JournalGuide {
     - **A moment** ("what was I doing at 3pm Tuesday") → Moment.
     - **A thing** ("when did I see the invoice from Rossi") → Seen.
 
-    Turn named days into dates with `date` (e.g. `date -v-1w +%F`). Today's numbers can lag up to 15 minutes.
+    Turn named days into dates with `date` (e.g. `date -v-1w +%F`), and select those days' files with the date-range part of the minutes-per-app recipe in `CLAUDE.md`. Today's numbers can lag up to 15 minutes.
 
     ## Report
     1. Sum time per app from `.digest.json` across the days in range; for part of a day, sum `sessions.jsonl` durations instead.
-    2. Group windows into projects. Two views help:
+    2. Group windows into projects. Two views help (set `from`/`to` to the period):
        ```sh
-       # Minutes per window, with the app name, unread counts, status marks and site suffixes stripped
-       jq -rs '[.[].windows[]] | map(.name |= (sub("^[^—]+ — "; "") | sub("^(\\([0-9]+\\) |[^[:alnum:]]+ )"; "") | sub(" [-|·/—] [^-|·/—]+$"; "")))
-         | group_by(.name) | map({name: .[0].name, min: (map(.seconds) | add / 60)}) | sort_by(-.min)[] | "\(.min | round)m\t\(.name)"' days/2026-10-2*/.digest.json
+       # Minutes per window across the period
+       jq -rs '[.[].windows[]] | group_by(.name) | map({name: .[0].name, min: (map(.seconds) | add / 60)}) | sort_by(-.min)[] | "\(.min | round)m\t\(.name)"' \
+         $(ls -d days/* | awk -v from=2026-10-15 -v to=2026-10-21 '{d = substr($0, 6)} d >= from && d <= to {print $0 "/.digest.json"}')
 
        # Keywords shared by 2+ window titles, with their minutes: candidate projects and clients
        jq -rs '[.[].windows[] | .seconds as $s | .name | sub("^[^—]+ — "; "") | ascii_downcase | [scan("[[:alpha:]]{4,}")] | unique[] | {word: ., s: $s}]
-         | group_by(.word) | map({word: .[0].word, min: (map(.s) | add / 60 | round), titles: length}) | map(select(.titles > 1)) | sort_by(-.min)[:25][] | "\(.min)m\t\(.titles) titles\t\(.word)"' days/2026-10-2*/.digest.json
+         | group_by(.word) | map({word: .[0].word, min: (map(.s) | add / 60 | round), titles: length}) | map(select(.titles > 1)) | sort_by(-.min)[:25][] | "\(.min)m\t\(.titles) titles\t\(.word)"' \
+         $(ls -d days/* | awk -v from=2026-10-15 -v to=2026-10-21 '{d = substr($0, 6)} d >= from && d <= to {print $0 "/.digest.json"}')
        ```
-       Propose groups from recurring keywords (a client, a document, a site), show which windows fall in each, and ask her to confirm or rename them.
+       Propose groups from recurring keywords (a client, a document, a site), show which windows fall in each, and ask her to confirm or rename them. Wait for her answer before step 3.
     3. Answer in a few plain sentences, then one small table (at most 10 rows: name, hours:minutes, share). Mention her notes from the period and the days with no capture.
     4. If an earlier `reviews/*-time.md` covers a comparable period, add one line on what changed.
-    5. Offer to save it: `mkdir -p reviews`, then `reviews/YYYY-MM-DD-time.md`. Save weekly or longer reports by default, day reports when she agrees.
+    5. Save it with her confirmed groups: `mkdir -p reviews`, then `reviews/YYYY-MM-DD-time.md`. Save weekly or longer reports by default, day reports when she agrees.
 
     ## Moment
-    1. Find the session that spans the minute in that day's `sessions.jsonl` (`.start[0:16] <= $at and .end[0:16] >= $at`), plus the ones just before and after.
-    2. Reconstruct the screen text at that minute (recipe in `CLAUDE.md`) for the focused display.
+    1. List every session overlapping that minute, plus the one just before:
+       ```sh
+       jq -r --arg m 2026-10-21T15:00 'select(.start[0:16] <= $m and .end[0:16] >= $m) | "\(.start[11:19])–\(.end[11:19])  \(.app // "?") — \(.windowTitle // "")"' days/2026-10-21/sessions.jsonl
+       ```
+    2. Reconstruct the screen at that second with the moment recipe in `CLAUDE.md` (`--arg at 2026-10-21T15:00:00`).
     3. Describe it in one or two sentences. Open the screenshot only if she asks or the text is unclear.
     4. If the moment falls in a gap, say capture was off (paused, idle, locked, or private) and what came before and after.
 
@@ -256,14 +281,24 @@ public enum JournalGuide {
     ```sh
     for v in whatsapp whatsap wnatsap 'whats app'; do printf '%s\t' "$v"; cat days/*/frames.jsonl | grep -i -F -c -- "$v"; done
     ```
-    For variants that hit, show her when and where with the "when something was on screen" recipe in `CLAUDE.md`. She picks which variants to include; each becomes a `--term`.
+    Then hunt OCR misreads with fragments of the term:
+    ```sh
+    jq -r '.windowTitle // empty, .text // empty, (.newLines // [])[]' days/*/frames.jsonl \
+      | grep -ioE '[[:alnum:]]*(hatsap|atsapp|whats)[[:alnum:]]*' | tr '[:upper:]' '[:lower:]' | sort | uniq -c | sort -rn
+    ```
+    For variants that hit, show her when and where with the "when something was on screen" recipe in `CLAUDE.md`. Add only clear misreads of the term; she picks which to include, and each becomes a `--term`.
 
     ## 3. Dry run
     ```sh
     "$SJ" forget --from 2026-10-21T18:57 --to 2026-10-21T19:00
     "$SJ" forget --term WhatsApp --term wnatsap
     ```
-    Tell her the counts and the actual time edges in plain words, especially any extra minutes it removes because moments overlap the edges. Ask for a clear yes.
+    Tell her in plain words:
+    - the counts and the actual time edges, especially extra minutes removed because moments overlap the edges;
+    - in one line per day, how much active time that day loses (the dry run lists the window visits);
+    - for terms, that every whole visit mentioning it goes, including work windows.
+
+    Ask for a clear yes.
 
     ## 4. Apply
     Run the same command with `--apply`. It quits and reopens the app and rebuilds the summaries itself. A non-zero exit means something still matches: show her what, and offer to run it again with a wider range or more variants.
@@ -276,6 +311,8 @@ public enum JournalGuide {
     Expect no output. For a range, rerun the dry run: expect nothing left to remove. `grep -i` doesn't fold accents, so add accented variants as extra `-e`.
 
     If `reviews/` mentions it, show her those lines and offer to edit the files. Done when the check is clean; tell her what was removed in one or two sentences.
+
+    Say what forget can't reach: copies outside this folder (Time Machine, other backups), and this folder's own instruction files (`CLAUDE.md`, `.claude/skills/`), which mention app names generically.
     """#
 
     static let tidyJournalSkill = #"""
@@ -294,12 +331,12 @@ public enum JournalGuide {
 
     ## 1. Show the size
     ```sh
-    du -sh days/* | sort -r; du -sh .
+    du -sh days/* | sort -rh; du -sh .
     ```
     Tell her the total and the biggest days; screenshots are almost all of it. Mention **Settings → retention** in the app, which deletes whole days after that many days.
 
     ## 2. Pick what to keep in full
-    Slimming a day keeps all its text, notes and summaries, and one screenshot per session, window visit and note; it deletes the rest. Ask how many recent days to keep in full (suggest 7). Today is always kept.
+    Slimming a day keeps all its text, notes and summaries, and one screenshot per session, window visit and note; it deletes the rest. Ask how many recent days to keep in full (suggest 7). "Keep the last N days" means N full days before today, plus today.
 
     Check whether anything is older than that (`N` days):
     ```sh

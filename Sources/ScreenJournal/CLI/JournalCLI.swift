@@ -34,6 +34,8 @@ struct JournalCLI {
         let plan: Forget.Plan
         let removedFrames: [FrameRecord]
         let removedEvents: Int
+        /// Active time as summary.md counts it, before and after.
+        let active: (before: TimeInterval, after: TimeInterval)
         let screenshots: [String]
         let bytes: Int64
 
@@ -80,6 +82,7 @@ struct JournalCLI {
                 day: day, plan: plan,
                 removedFrames: rows.frames.filter { !keptIDs.contains($0.id) },
                 removedEvents: rows.events.count - plan.events.count,
+                active: (activeSeconds(rows.frames), activeSeconds(plan.frames)),
                 screenshots: screenshots,
                 bytes: store.size(day: day, files: screenshots)
             )
@@ -95,7 +98,8 @@ struct JournalCLI {
     }
 
     private func sentence(_ day: DayForget, target: Forget.Target) -> String {
-        var text = "\(day.day): removes \(counts([day]))."
+        let active = "\(Format.clock(day.active.before)) active → \(Format.clock(day.active.after))"
+        var text = "\(day.day): \(active). Removes \(counts([day]))."
         if case let .range(from, to) = target, let span = day.plan.removedSpan, span.start < from || span.end > to {
             text += " Because some moments overlap the range, this also covers \(clock(span.start))–\(clock(span.end))."
         }
@@ -103,6 +107,10 @@ struct JournalCLI {
             text += " \(plural(day.plan.brokenReferences, "kept moment")) shared a removed screenshot and will show none."
         }
         return text
+    }
+
+    private func activeSeconds(_ frames: [FrameRecord]) -> TimeInterval {
+        DaySummary.digest(day: "", sessions: SessionBuilder.sessions(from: frames), events: []).activeSeconds
     }
 
     private func total(_ days: [DayForget]) -> String {
@@ -151,11 +159,12 @@ struct JournalCLI {
             print("The journal is empty.")
             return 0
         }
-        let sizes = days.map { store.size(day: $0) }
-        zip(days, sizes).forEach { print("\($0)  \(megabytes($1))") }
-        print("Total  \(megabytes(sizes.reduce(0, +)))\n")
+        printSizes(days)
 
-        let cutoff = store.day(of: Date().addingTimeInterval(-Double(keepDays) * 86400))
+        // Strictly before (today − keepDays) in local calendar days, so today is never touched.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = store.timeZone
+        let cutoff = calendar.date(byAdding: .day, value: -keepDays, to: Date()).map(store.day(of:)) ?? today
         let old = days.filter { $0 < min(cutoff, today) }
         guard !old.isEmpty else {
             let age = keepDays == 0 ? "before today" : "older than \(plural(keepDays, "day"))"
@@ -177,8 +186,16 @@ struct JournalCLI {
             return 0
         }
         deletions.forEach { store.deleteImages($0.images, day: $0.day) }
-        print("Freed \(bytes) on \(plural(deletions.count, "day")) (\(screenshots)).")
+        print("Freed \(bytes) on \(plural(deletions.count, "day")) (\(screenshots)). Now:\n")
+        printSizes(days)
         return 0
+    }
+
+    /// Bytes per day, newest first, with a total.
+    private func printSizes(_ days: [String]) {
+        let sizes = days.map { store.size(day: $0) }
+        zip(days, sizes).forEach { print("\($0)  \(megabytes($1))") }
+        print("Total  \(megabytes(sizes.reduce(0, +)))\n")
     }
 
     private func tidyPlan(_ day: String) -> Tidy.Plan {

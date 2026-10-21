@@ -58,4 +58,10 @@ public enum WindowPlacement {
         let preferred = bundleID.flatMap { id in candidates.first { $0.bundleID == id } }
         return preferred ?? candidates.first
     }
+
+    /// Whether a display shows the same window after its capture as before it,
+    /// so the screenshot belongs to the label; a switch mid-capture mixes one window's pixels with another's title.
+    public static func settled(before: WindowInfo?, after: WindowInfo?) -> Bool {
+        before?.bundleID == after?.bundleID && before?.title == after?.title
+    }
 }

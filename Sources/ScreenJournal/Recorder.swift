@@ -27,6 +27,8 @@ final class Recorder {
     private let ownBundleID = Bundle.main.bundleIdentifier
     private var open: [Int: FrameRecord] = [:]
     private var memory: [Int: DisplayMemory] = [:]
+    /// Displays whose window changed during last tick's capture and were skipped for it.
+    private var unsettled: Set<Int> = []
     private var lastGate: CaptureGate?
 
     init(store: JournalStore) {
@@ -62,13 +64,22 @@ final class Recorder {
             let focusedDisplay = frontWindow.flatMap { w in
                 shots.first { $0.bounds.contains(CGPoint(x: w.bounds.midX, y: w.bounds.midY)) }?.index
             } ?? 1
+            let frontmostAfter = ActivityReader.frontmost
+            let windowsAfter = ActivityReader.windows()
             var kept = 0
             for shot in shots {
                 let focused = shot.index == focusedDisplay
-                let top = WindowPlacement.topWindow(
-                    on: shot.bounds, among: windows,
-                    preferring: focused ? frontmost?.bundleIdentifier : nil, ownBundleID: ownBundleID
-                ) ?? (focused ? windowless(frontmost, on: shot.bounds) : nil)
+                let after = label(shot, focused: focused, frontmost: frontmostAfter, windows: windowsAfter)
+                let settled = WindowPlacement.settled(
+                    before: label(shot, focused: focused, frontmost: frontmost, windows: windows), after: after
+                )
+                // She switched windows during the capture: skip once, the next tick sees the settled window.
+                // A title that changes every tick (timer, video time, running command) never settles, so the
+                // second time record anyway, under the post-capture label: the pixels are composited during
+                // captureAll, much closer to that read than to the one before the gate.
+                if !settled && unsettled.insert(shot.index).inserted { continue }
+                unsettled.remove(shot.index)
+                let top = after
                 let signature = FrameSignature(thumbnail: ImageCodec.thumbnail(of: shot.image), bundleID: top?.bundleID, windowTitle: top?.title)
                 let previous = memory[shot.index]
                 switch policy.decide(current: signature, previous: previous?.signature, lastImageAt: previous?.imageAt, now: now) {
@@ -96,6 +107,7 @@ final class Recorder {
     func closeAll(at date: Date) {
         for display in open.keys { close(display: display, at: date) }
         memory.removeAll()
+        unsettled.removeAll()
     }
 
     private func record(
@@ -126,6 +138,14 @@ final class Recorder {
             app: top?.app, bundleID: top?.bundleID, windowTitle: top?.title, image: image,
             text: visit == nil && !ocr.isEmpty ? ocr : nil, newLines: newLines.isEmpty ? nil : newLines
         )
+    }
+
+    /// The window a display's shot is filed under.
+    private func label(_ shot: DisplayShot, focused: Bool, frontmost: NSRunningApplication?, windows: [WindowInfo]) -> WindowInfo? {
+        WindowPlacement.topWindow(
+            on: shot.bounds, among: windows,
+            preferring: focused ? frontmost?.bundleIdentifier : nil, ownBundleID: ownBundleID
+        ) ?? (focused ? windowless(frontmost, on: shot.bounds) : nil)
     }
 
     /// The frontmost app when it has no window here, e.g. Finder showing just the desktop.
