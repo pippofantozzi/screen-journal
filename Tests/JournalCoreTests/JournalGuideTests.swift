@@ -24,6 +24,13 @@ struct JournalGuideTests {
         }
     }
 
+    /// After she forgets an app, a search of the folder should only find the helper that lists apps to skip.
+    @Test func onlyTheJQHelpersNameChatApps() {
+        for file in JournalGuide.files where file.path != ".claude/journal.jq" {
+            #expect(!file.contents.lowercased().contains("whatsapp"), "\(file.path)")
+        }
+    }
+
     @Test func everyFileCarriesTheCurrentVersionMarker() {
         #expect(JournalGuide.files.allSatisfy { JournalGuide.isCurrent($0.contents) })
         #expect(!JournalGuide.isCurrent("<!-- screen-journal-guide v1 -->"))

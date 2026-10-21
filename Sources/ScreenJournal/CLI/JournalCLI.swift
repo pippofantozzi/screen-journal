@@ -37,6 +37,7 @@ struct JournalCLI {
         /// Active time as summary.md counts it, before and after.
         let active: (before: TimeInterval, after: TimeInterval)
         let screenshots: [String]
+        /// Size of the screenshots it deletes, measured before deleting; dry run and apply both report this.
         let bytes: Int64
 
         var changes: Bool { !removedFrames.isEmpty || removedEvents > 0 || !screenshots.isEmpty }
@@ -57,7 +58,6 @@ struct JournalCLI {
             return 0
         }
         return withAppQuit {
-            let before = days.reduce(0) { $0 + store.size(day: $1.day) }
             do {
                 for day in days {
                     try store.rewrite(day: day.day, frames: day.plan.frames, events: day.plan.events, sessions: day.plan.sessions)
@@ -65,8 +65,7 @@ struct JournalCLI {
                     try store.summarize(day: day.day)
                 }
             } catch { return failed(error) }
-            let after = days.reduce(0) { $0 + store.size(day: $1.day) }
-            print("\nRemoved \(counts(days)). Freed \(megabytes(before - after)).")
+            print("\nRemoved \(counts(days)). Freed \(megabytes(days.reduce(0) { $0 + $1.bytes })).")
             guard case .terms(let terms) = target else { return 0 }
             return confirmGone(terms)
         }
@@ -75,9 +74,12 @@ struct JournalCLI {
     private func forgetDays(_ target: Forget.Target) throws -> [DayForget] {
         try candidateDays(target).map { day in
             let rows = try store.rows(day: day)
-            let plan = Forget.plan(frames: rows.frames, events: rows.events, sessions: rows.sessions, target: target)
+            let onDisk = store.imagesOnDisk(day: day)
+            let plan = Forget.plan(
+                frames: rows.frames, events: rows.events, sessions: rows.sessions, imagesOnDisk: onDisk, target: target
+            )
             let keptIDs = Set(plan.frames.map(\.id))
-            let screenshots = Set(store.imagesOnDisk(day: day)).intersection(plan.deleteImages).sorted()
+            let screenshots = Set(onDisk).intersection(plan.deleteImages).sorted()
             return DayForget(
                 day: day, plan: plan,
                 removedFrames: rows.frames.filter { !keptIDs.contains($0.id) },
@@ -99,7 +101,7 @@ struct JournalCLI {
 
     private func sentence(_ day: DayForget, target: Forget.Target) -> String {
         let active = "\(Format.clock(day.active.before)) active → \(Format.clock(day.active.after))"
-        var text = "\(day.day): \(active). Removes \(counts([day]))."
+        var text = "\(day.day): \(active). Removes \(counts([day])) (\(megabytes(day.bytes)))."
         if case let .range(from, to) = target, let span = day.plan.removedSpan, span.start < from || span.end > to {
             text += " Because some moments overlap the range, this also covers \(clock(span.start))–\(clock(span.end))."
         }
@@ -115,7 +117,7 @@ struct JournalCLI {
 
     private func total(_ days: [DayForget]) -> String {
         let bytes = days.reduce(0) { $0 + $1.bytes }
-        return "Total: \(counts(days)) on \(plural(days.count, "day")), about \(megabytes(bytes))."
+        return "Total: \(counts(days)) on \(plural(days.count, "day")), freeing \(megabytes(bytes))."
     }
 
     private func counts(_ days: [DayForget]) -> String {
@@ -129,7 +131,7 @@ struct JournalCLI {
         let frames = days.flatMap(\.removedFrames)
         let visits = days.reduce(0) { $0 + Visits.indices($1.removedFrames).count }
         print("\(plural(frames.count, "moment")) in \(plural(visits, "window visit")).")
-        let titles = Dictionary(grouping: frames) { [$0.app, $0.windowTitle].compactMap { $0 }.joined(separator: " — ") }
+        let titles = Dictionary(grouping: frames) { [$0.app, WindowTitle.stable($0.windowTitle)].compactMap { $0 }.joined(separator: " — ") }
             .map { (title: $0.key.isEmpty ? "(no window)" : $0.key, count: $0.value.count) }
             .sorted { ($0.count, $1.title) > ($1.count, $0.title) }
         guard !titles.isEmpty else { return }
@@ -179,14 +181,19 @@ struct JournalCLI {
             case .refused(let reason): print("\(day): \(reason)")
             }
         }
+        let verb = apply ? "freed" : "frees"
+        for deletion in deletions {
+            if apply { store.deleteImages(deletion.images, day: deletion.day) }
+            print("\(deletion.day): \(verb) \(megabytes(deletion.bytes)) (\(plural(deletion.images.count, "screenshot"))).")
+        }
         let bytes = megabytes(deletions.reduce(0) { $0 + $1.bytes })
         let screenshots = plural(deletions.reduce(0) { $0 + $1.images.count }, "screenshot")
+        let total = "Total: \(verb) \(bytes) on \(plural(deletions.count, "day")) (\(screenshots))."
         guard apply else {
-            print("Tidying would free \(bytes) on \(plural(deletions.count, "day")) (\(screenshots)). Add --apply to delete them.")
+            print(total + " Add --apply to delete them.")
             return 0
         }
-        deletions.forEach { store.deleteImages($0.images, day: $0.day) }
-        print("Freed \(bytes) on \(plural(deletions.count, "day")) (\(screenshots)). Now:\n")
+        print(total + " Now:\n")
         printSizes(days)
         return 0
     }

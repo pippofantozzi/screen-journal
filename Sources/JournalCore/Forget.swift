@@ -20,13 +20,20 @@ public enum Forget {
         public let brokenReferences: Int
     }
 
-    public static func plan(frames: [FrameRecord], events: [EventRecord], sessions: [Session], target: Target) -> Plan {
+    /// `imagesOnDisk` are paths relative to the day folder, like `FrameRecord.image`. Unreferenced ones whose
+    /// capture time falls inside a removed row are orphans (crashes, skipped ticks) and go too.
+    public static func plan(
+        frames: [FrameRecord], events: [EventRecord], sessions: [Session], imagesOnDisk: [String], target: Target
+    ) -> Plan {
         let removed = removedIndices(frames, target)
         let removedFrames = frames.indices.filter(removed.contains).map { frames[$0] }
         let keptFrames = frames.indices.filter { !removed.contains($0) }.map { frames[$0] }
         let keptSessions = sessions.filter { !forgets($0, target, removedFrames: removedFrames) }
+        let referenced = images(frames, sessions)
+        let orphans = imagesOnDisk.filter { !referenced.contains($0) && takenDuring(removedFrames, $0) }
         let doomed = Set(removedFrames.map(\.image))
-            .union(images(frames, sessions).subtracting(images(keptFrames, keptSessions)))
+            .union(referenced.subtracting(images(keptFrames, keptSessions)))
+            .union(orphans)
         let keptReferences = keptFrames.map(\.image) + keptSessions.map(\.representativeFrame)
         return Plan(
             frames: keptFrames,
@@ -60,7 +67,7 @@ public enum Forget {
             overlaps(session.start, session.end, from, to)
         case .terms:
             removedFrames.contains { f in
-                f.focused && f.bundleID == session.bundleID && f.windowTitle == session.windowTitle
+                f.focused && f.bundleID == session.bundleID && WindowTitle.stable(f.windowTitle) == session.windowTitle
                     && session.start <= f.end && f.start <= session.end
             }
         }
@@ -83,6 +90,21 @@ public enum Forget {
 
     private static func images(_ frames: [FrameRecord], _ sessions: [Session]) -> Set<String> {
         Set(frames.map(\.image) + sessions.map(\.representativeFrame))
+    }
+
+    /// Compares local times of day from names like `frames/HHMMSS-dN.heic` and row ids `HHMMSS-dN`, so no time zone is needed.
+    private static func takenDuring(_ rows: [FrameRecord], _ image: String) -> Bool {
+        guard let taken = secondOfDay(image) else { return false }
+        return rows.contains { row in
+            guard let start = secondOfDay(row.id) else { return false }
+            return Double(start) <= Double(taken) && Double(taken) <= Double(start) + row.duration
+        }
+    }
+
+    private static func secondOfDay(_ name: String) -> Int? {
+        let hms = (name.split(separator: "/").last ?? "").prefix(6)
+        guard hms.count == 6, hms.allSatisfy({ $0.isASCII && $0.isNumber }), let n = Int(hms) else { return nil }
+        return n / 10000 * 3600 + n / 100 % 100 * 60 + n % 100
     }
 
     private static func span(_ frames: [FrameRecord]) -> DateInterval? {

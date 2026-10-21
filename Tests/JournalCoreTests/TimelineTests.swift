@@ -43,6 +43,21 @@ struct SessionBuilderTests {
         #expect(SessionBuilder.sessions(from: frames, maxGap: 60).count == 2)
     }
 
+    @Test func mergesAnimatedTitleVariantsOfOneWindow() {
+        let frames = [
+            frame("a", at: 0, for: 10, app: "Ghostty", title: "✳ Claude Code"),
+            frame("b", at: 10, for: 10, app: "Ghostty", title: "◐ Claude Code"),
+            frame("c", at: 20, for: 10, app: "Ghostty", title: "Claude Code"),
+            frame("d", at: 30, for: 10, app: "Chrome", title: "(1) WhatsApp"),
+            frame("e", at: 40, for: 10, app: "Chrome", title: "WhatsApp"),
+        ]
+        let sessions = SessionBuilder.sessions(from: frames)
+        #expect(sessions.map(\.windowTitle) == ["Claude Code", "WhatsApp"])
+        #expect(sessions.map(\.frames) == [3, 2])
+        let digest = DaySummary.digest(day: "d", sessions: sessions, events: [])
+        #expect(digest.windowTransitions == [.init(from: "Ghostty — Claude Code", to: "Chrome — WhatsApp", count: 1)])
+    }
+
     @Test func ignoresUnfocusedDisplays() {
         let frames = [
             frame("a", at: 0, for: 10, app: "Mail"),

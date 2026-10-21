@@ -21,7 +21,7 @@ struct ForgetRangeTests {
     ]
 
     func plan(_ from: TimeInterval, _ to: TimeInterval, events: [EventRecord] = []) -> Forget.Plan {
-        Forget.plan(frames: frames, events: events, sessions: [], target: .range(from: base + from, to: base + to))
+        Forget.plan(frames: frames, events: events, sessions: [], imagesOnDisk: [], target: .range(from: base + from, to: base + to))
     }
 
     @Test func isHalfOpen() {
@@ -40,14 +40,14 @@ struct ForgetRangeTests {
 
     @Test func removesOverlappingSessions() {
         let sessions = SessionBuilder.sessions(from: [frame("x", at: 0, for: 10, app: "Mail"), frame("y", at: 10, for: 10, app: "Excel")])
-        let p = Forget.plan(frames: [], events: [], sessions: sessions, target: .range(from: base + 10, to: base + 15))
+        let p = Forget.plan(frames: [], events: [], sessions: sessions, imagesOnDisk: [], target: .range(from: base + 10, to: base + 15))
         #expect(p.sessions.map(\.app) == ["Mail"])
         #expect(p.removedSpan == nil)
     }
 
     @Test func deletesRemovedImageStillUsedByKeptRowAndCountsIt() {
         let frames = [row("a", at: 0, text: "one"), row("b", at: 10, image: "frames/a.heic", newLines: ["two"])]
-        let p = Forget.plan(frames: frames, events: [], sessions: [], target: .range(from: base, to: base + 10))
+        let p = Forget.plan(frames: frames, events: [], sessions: [], imagesOnDisk: [], target: .range(from: base, to: base + 10))
         #expect(p.frames.map(\.id) == ["b"])
         #expect(p.deleteImages == ["frames/a.heic"])
         #expect(p.brokenReferences == 1)
@@ -56,7 +56,7 @@ struct ForgetRangeTests {
 
 struct ForgetTermsTests {
     func plan(_ frames: [FrameRecord], _ terms: [String], events: [EventRecord] = [], sessions: [Session] = []) -> Forget.Plan {
-        Forget.plan(frames: frames, events: events, sessions: sessions, target: .terms(terms))
+        Forget.plan(frames: frames, events: events, sessions: sessions, imagesOnDisk: [], target: .terms(terms))
     }
 
     @Test func removesTheWholeVisitButNotTheNextWindow() {
@@ -124,6 +124,12 @@ struct ForgetTermsTests {
         #expect(p.sessions.map(\.app) == ["Excel"])
     }
 
+    @Test func removesSessionsWhoseTitleWasStabilized() {
+        let frames = [row("a", at: 0, title: "(2) Inbox", text: "Invoice")]
+        let p = plan(frames, ["invoice"], sessions: SessionBuilder.sessions(from: frames))
+        #expect(p.sessions.isEmpty)
+    }
+
     @Test func deletesImagesOnlyRemovedSessionsReferenced() {
         let frames = [row("a", at: 0, text: "Invoice")]
         let orphan = Session(start: base, end: base + 10, app: "Chrome", bundleID: "id.Chrome", windowTitle: "Tab",
@@ -131,6 +137,33 @@ struct ForgetTermsTests {
         let p = plan(frames, ["invoice"], sessions: [orphan])
         #expect(p.sessions.isEmpty)
         #expect(p.deleteImages == ["frames/a.heic", "frames/old.heic"])
+    }
+}
+
+struct ForgetOrphanTests {
+    /// Rows named by their local capture time, like real frame ids.
+    let frames = [
+        row("100000-d1", at: 0, for: 30, text: "Invoice"),
+        row("100030-d1", at: 30, for: 30, title: "Other", text: "kept"),
+    ]
+
+    func plan(onDisk: [String]) -> Forget.Plan {
+        Forget.plan(frames: frames, events: [], sessions: [], imagesOnDisk: onDisk, target: .terms(["invoice"]))
+    }
+
+    @Test func deletesUnreferencedImagesTakenDuringARemovedRow() {
+        let p = plan(onDisk: ["frames/100000-d1.heic", "frames/100015-d2.heic", "frames/100030-d1.heic"])
+        #expect(p.deleteImages == ["frames/100000-d1.heic", "frames/100015-d2.heic"])
+    }
+
+    @Test func keepsUnreferencedImagesOutsideRemovedRows() {
+        let p = plan(onDisk: ["frames/095959-d1.heic", "frames/100045-d1.heic", "notes.txt"])
+        #expect(p.deleteImages == ["frames/100000-d1.heic"])
+    }
+
+    @Test func neverDeletesAKeptRowsImageAtTheEdge() {
+        // 10:00:30 is the removed row's end and the kept row's own image.
+        #expect(!plan(onDisk: ["frames/100030-d1.heic"]).deleteImages.contains("frames/100030-d1.heic"))
     }
 }
 
