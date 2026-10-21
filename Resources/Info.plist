@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.filippofantozzi.ScreenJournal</string>
+	<key>CFBundleName</key>
+	<string>Screen Journal</string>
+	<key>CFBundleDisplayName</key>
+	<string>Screen Journal</string>
+	<key>CFBundleExecutable</key>
+	<string>ScreenJournal</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD__</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Screen Journal saves a snapshot of your screen when it changes, so you can later ask Claude what to automate. Everything stays on this Mac.</string>
+	<key>SUFeedURL</key>
+	<string>__FEED_URL__</string>
+	<key>SUPublicEDKey</key>
+	<string>__ED_PUBLIC_KEY__</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+</dict>
+</plist>
