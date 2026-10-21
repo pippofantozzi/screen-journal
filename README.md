@@ -31,6 +31,12 @@ There's no paid Apple Developer account, so:
 - Every build is signed with the self-signed **Screen Journal Signing** identity (`scripts/create-signing-identity.sh`, one-time; back up `~/.screen-journal-signing/signing.p12`). The same identity across releases is what keeps her Screen Recording permission through updates. **Don't lose it.**
 - The install is a `curl` one-liner, which skips the Gatekeeper quarantine. Sparkle updates also skip it.
 
+One-time per Mac, so `codesign` stops asking for your login password for each nested Sparkle binary:
+
+```bash
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -D "Screen Journal Signing" -t private ~/Library/Keychains/login.keychain-db
+```
+
 ```bash
 scripts/release.sh 0.2.0 "What changed"
 ```
