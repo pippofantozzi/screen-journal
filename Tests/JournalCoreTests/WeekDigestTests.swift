@@ -43,6 +43,12 @@ struct WeekDigestTests {
         #expect(md.contains("- 3 days, 17m Excel — Report.xlsx"))
     }
 
+    @Test func aSingleDaySaysSoAndExplainsMissingRecurringWindows() {
+        let md = WeekDigest.markdown([week[0]], timeZone: rome)
+        #expect(md.contains("Active: 11m across 1 day."))
+        #expect(md.contains("## Recurring windows\n\nNone yet: a window shows up here once it comes back on a second day.\n"))
+    }
+
     @Test func groupsNotesByDay() {
         let md = WeekDigest.markdown(week, timeZone: rome)
         #expect(md.contains("### 2026-10-21\n\n- 19:46 — export again"))

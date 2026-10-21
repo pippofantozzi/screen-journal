@@ -4,10 +4,14 @@ import Observation
 
 enum Preferences {
     static let interval = "captureInterval"
+    /// When the interval was last set; interval advice only looks at frames captured since.
+    static let intervalChangedAt = "captureIntervalChangedAt"
     static let retentionDays = "retentionDays"
     static let excludedApps = "excludedBundleIDs"
     static let pausedUntil = "pausedUntil"
     static let onboarded = "onboarded"
+
+    static let intervalOptions: [TimeInterval] = [5, 10, 15, 30, 60]
 
     static let defaultExcludedApps = [
         "com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop",
@@ -56,6 +60,7 @@ final class AppModel {
     init() {
         Preferences.registerDefaults()
         recorder = Recorder(store: store)
+        if defaults.object(forKey: Preferences.intervalChangedAt) == nil { intervalDidChange() }
         let stored = defaults.double(forKey: Preferences.pausedUntil)
         pausedUntil = stored > 0 ? Date(timeIntervalSince1970: stored) : nil
     }
@@ -125,6 +130,19 @@ final class AppModel {
             at: Date(), kind: .note, app: moment.app, bundleID: moment.bundleID,
             windowTitle: moment.windowTitle, frameID: moment.frameID, text: trimmed
         ))
+    }
+
+    func intervalDidChange() {
+        defaults.set(Date().timeIntervalSince1970, forKey: Preferences.intervalChangedAt)
+    }
+
+    /// Reads up to a week of frames off the main thread; call on demand, not in the background.
+    func intervalAdvice() async -> IntervalAdvice {
+        let current = defaults.double(forKey: Preferences.interval)
+        let since = Date(timeIntervalSince1970: defaults.double(forKey: Preferences.intervalChangedAt))
+        let store = store
+        let frames = await Task.detached(priority: .utility) { store.focusedFrames(since: since, until: Date()) }.value
+        return IntervalAdvice.advise(frames, current: current, candidates: Preferences.intervalOptions)
     }
 
     func openFolder() {

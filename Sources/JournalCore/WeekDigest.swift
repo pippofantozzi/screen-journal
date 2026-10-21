@@ -15,13 +15,16 @@ public enum WeekDigest {
         var lines = [
             "# Week of \(first.day) – \(last.day)",
             "",
-            "Active: \(Format.clock(active)) across \(days.count) days.",
+            "Active: \(Format.clock(active)) across \(days.count) \(days.count == 1 ? "day" : "days").",
             "",
         ]
         let apps = days.flatMap(\.apps).merged()
         lines += ["## Time per app", ""] + apps.prefix(limit).map { "- \(Format.clock($0.seconds)) \($0.name)" } + [""]
         lines += ["## Recurring windows", ""]
-        lines += recurringWindows(days).prefix(limit).map { "- \($0.days) days, \(Format.clock($0.seconds)) \($0.name)" }
+        let recurring = recurringWindows(days)
+        lines += recurring.isEmpty
+            ? ["None yet: a window shows up here once it comes back on a second day."]
+            : recurring.prefix(limit).map { "- \($0.days) days, \(Format.clock($0.seconds)) \($0.name)" }
         lines.append("")
         lines += ["## Frequent app switches", ""]
         lines += days.flatMap(\.transitions).merged().prefix(limit).map { "- \($0.count)× \($0.from) → \($0.to)" }

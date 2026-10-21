@@ -3,23 +3,32 @@ import Testing
 
 struct TextDeltaTests {
     @Test func identicalTextHasNoNewLines() {
-        #expect(TextDelta.newLines("a\nb", since: "a\nb") == [])
+        #expect(TextDelta.newLines("a\nb", seen: TextDelta.lineSet("a\nb")) == [])
     }
 
     @Test func findsTheOneNewLine() {
-        #expect(TextDelta.newLines("a\nb\nc", since: "a\nc") == ["b"])
+        #expect(TextDelta.newLines("a\nb\nc", seen: ["a", "c"]) == ["b"])
     }
 
     @Test func reorderedLinesAreNotNew() {
-        #expect(TextDelta.newLines("b\na", since: "a\nb") == [])
+        #expect(TextDelta.newLines("b\na", seen: ["a", "b"]) == [])
+    }
+
+    @Test func linesSeenEarlierInTheVisitAreNotNew() {
+        var seen = TextDelta.lineSet("chat A\nhello")
+        let first = TextDelta.newLines("chat B\nbye", seen: seen)
+        seen.formUnion(first)
+        #expect(first == ["chat B", "bye"])
+        #expect(TextDelta.newLines("chat A\nhello\nagain", seen: seen) == ["again"])
     }
 
     @Test func ignoresWhitespaceOnlyLinesAndTrims() {
-        #expect(TextDelta.newLines("  \n  x  \n\t", since: "x") == [])
-        #expect(TextDelta.newLines("  y  \n", since: "x") == ["y"])
+        #expect(TextDelta.newLines("  \n  x  \n\t", seen: ["x"]) == [])
+        #expect(TextDelta.newLines("  y  \n", seen: ["x"]) == ["y"])
+        #expect(TextDelta.lineSet("  x \n\n y") == ["x", "y"])
     }
 
     @Test func collapsesDuplicatesKeepingOrder() {
-        #expect(TextDelta.newLines("c\nb\nc\nb", since: "a") == ["c", "b"])
+        #expect(TextDelta.newLines("c\nb\nc\nb", seen: ["a"]) == ["c", "b"])
     }
 }

@@ -1,4 +1,4 @@
-import CoreGraphics
+import AppKit
 import Foundation
 import JournalCore
 
@@ -8,7 +8,9 @@ final class Recorder {
     /// What was last recorded on one display, so the next record only adds what's new.
     struct DisplayMemory {
         var signature: FrameSignature
-        var text: String
+        /// Lines already on record during this visit to the window.
+        var seen: Set<String>
+        var day: String
         var image: String
         var imageAt: Date
     }
@@ -66,7 +68,7 @@ final class Recorder {
                 let top = WindowPlacement.topWindow(
                     on: shot.bounds, among: windows,
                     preferring: focused ? frontmost?.bundleIdentifier : nil, ownBundleID: ownBundleID
-                )
+                ) ?? (focused ? windowless(frontmost, on: shot.bounds) : nil)
                 let signature = FrameSignature(thumbnail: ImageCodec.thumbnail(of: shot.image), bundleID: top?.bundleID, windowTitle: top?.title)
                 let previous = memory[shot.index]
                 switch policy.decide(current: signature, previous: previous?.signature, lastImageAt: previous?.imageAt, now: now) {
@@ -106,17 +108,29 @@ final class Recorder {
         let image = try shared?.image ?? store.writeImage(shot.image, id: id, at: now)
 
         let ocr = await TextRecognizer.text(in: shot.image)
-        let isNewWindow = previous.map {
-            $0.text.isEmpty || $0.signature.bundleID != signature.bundleID || $0.signature.windowTitle != signature.windowTitle
-        } ?? true
-        let newLines = isNewWindow ? [] : TextDelta.newLines(ocr, since: previous?.text ?? "")
+        let day = store.day(of: now)
+        // Same window, same day, and something already on record: continue the visit.
+        let visit = previous.flatMap {
+            !$0.seen.isEmpty && $0.day == day
+                && $0.signature.bundleID == signature.bundleID && $0.signature.windowTitle == signature.windowTitle ? $0 : nil
+        }
+        let newLines = visit.map { TextDelta.newLines(ocr, seen: $0.seen) } ?? []
+        let seen = visit.map { $0.seen.union(newLines) } ?? TextDelta.lineSet(ocr)
 
-        memory[shot.index] = DisplayMemory(signature: signature, text: ocr, image: image, imageAt: shared?.imageAt ?? now)
+        memory[shot.index] = DisplayMemory(signature: signature, seen: seen, day: day, image: image, imageAt: shared?.imageAt ?? now)
         open[shot.index] = FrameRecord(
             id: id, start: now, end: now, display: shot.index, focused: focused,
             app: top?.app, bundleID: top?.bundleID, windowTitle: top?.title, image: image,
-            text: isNewWindow && !ocr.isEmpty ? ocr : nil, newLines: newLines.isEmpty ? nil : newLines
+            text: visit == nil && !ocr.isEmpty ? ocr : nil, newLines: newLines.isEmpty ? nil : newLines
         )
+    }
+
+    /// The frontmost app when it has no window here, e.g. Finder showing just the desktop.
+    private func windowless(_ app: NSRunningApplication?, on bounds: CGRect) -> WindowInfo? {
+        guard let name = app?.localizedName,
+              !SystemApps.isIgnored(app: name, bundleID: app?.bundleIdentifier, ownBundleID: ownBundleID)
+        else { return nil }
+        return WindowInfo(app: name, bundleID: app?.bundleIdentifier, title: nil, bounds: bounds, layer: 0)
     }
 
     private func close(display: Int, at date: Date) {

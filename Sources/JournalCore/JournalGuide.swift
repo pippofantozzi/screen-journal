@@ -57,7 +57,7 @@ public enum JournalGuide {
     - `app`, `bundleID`, `windowTitle`: the frontmost window on that display.
     - `image`: latest saved screenshot for that display, relative to the day folder. Consecutive rows may share one; a row owns its image when the filename matches its `id`. Images can be missing on slimmed or edited days.
     - `text`: full on-device OCR of the display, only on the first row after the window changed.
-    - `newLines`: lines that appeared since the previous row on that display. Older days may have `textSameAs` instead.
+    - `newLines`: lines first seen in this window since its row with `text` (a line that scrolls away and back isn't repeated). Older days may have `textSameAs` instead.
 
     ### events.jsonl
     `at`, `kind`, and per kind: `started` (`version`), `stopped`, `appSwitch` (`app`, `bundleID`), `note` (`text`, plus the `app`, `bundleID`, `windowTitle` and `frameID` on screen when she wrote it). Gap markers: `paused`, `idle`, `locked`, `skipped` (private app or window in front), `active` (capture resumed).
@@ -81,7 +81,7 @@ public enum JournalGuide {
     # Sessions in one app
     jq -r 'select(.app == "Microsoft Excel") | [.start[0:16], .end[11:16], .windowTitle] | @tsv' days/*/sessions.jsonl
 
-    # Full screen text on display 1 at a moment: last row with `text`, plus every later `newLines`
+    # Everything seen in the window on display 1 so far at a moment: last row with `text`, plus every later `newLines`
     jq -rs --arg at 2026-10-21T15:00 --argjson display 1 '
       [.[] | select(.display == $display and .start <= $at)]
       | (map(has("text")) | rindex(true)) as $i

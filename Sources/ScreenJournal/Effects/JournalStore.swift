@@ -66,6 +66,15 @@ struct JournalStore {
         }
     }
 
+    /// Focused frames that started at or after `since`, from at most the last 7 days.
+    func focusedFrames(since: Date, until now: Date) -> [FrameRecord] {
+        let first = day(of: max(since, now.addingTimeInterval(-6 * 86400)))
+        return dayNames().filter { $0 >= first && $0 <= day(of: now) }.flatMap { day in
+            let text = (try? read(dayDir(day).appending(path: "frames.jsonl"))) ?? ""
+            return ((try? JournalCoding.decodeLines(FrameRecord.self, from: text)) ?? []).filter { $0.focused && $0.start >= since }
+        }
+    }
+
     /// Frame rows written for one day.
     func frameCount(day: String) -> Int {
         guard let data = FileManager.default.contents(atPath: dayDir(day).appending(path: "frames.jsonl").path) else { return 0 }
