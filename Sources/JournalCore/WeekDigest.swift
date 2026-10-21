@@ -26,9 +26,8 @@ public enum WeekDigest {
             ? ["None yet: a window shows up here once it comes back on a second day."]
             : recurring.prefix(limit).map { "- \($0.days) days, \(Format.clock($0.seconds)) \($0.name)" }
         lines.append("")
-        lines += ["## Frequent app switches", ""]
-        lines += days.flatMap(\.transitions).merged().prefix(limit).map { "- \($0.count)× \($0.from) → \($0.to)" }
-        lines.append("")
+        lines += ["## Frequent app switches", ""] + Format.switches(days.flatMap(\.transitions).merged(), limit: limit) + [""]
+        lines += ["## Frequent window switches", ""] + Format.switches(days.flatMap(\.windowTransitions).merged(), limit: limit) + [""]
         let notedDays = days.filter { !$0.notes.isEmpty }
         if !notedDays.isEmpty {
             lines += ["## Notes", ""]

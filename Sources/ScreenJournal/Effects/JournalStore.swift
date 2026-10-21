@@ -4,6 +4,13 @@ import JournalCore
 
 /// The journal folder on disk. Every file write in the app goes through here.
 struct JournalStore {
+    /// One day's source rows, plus its derived sessions.
+    struct DayRows {
+        let frames: [FrameRecord]
+        let events: [EventRecord]
+        let sessions: [Session]
+    }
+
     let root: URL
     var timeZone: TimeZone { .current }
 
@@ -40,6 +47,54 @@ struct JournalStore {
         }
     }
 
+    func rows(day: String) throws -> DayRows {
+        let dir = dayDir(day)
+        return DayRows(
+            frames: try JournalCoding.decodeLines(FrameRecord.self, from: read(dir.appending(path: "frames.jsonl"))),
+            events: try JournalCoding.decodeLines(EventRecord.self, from: read(dir.appending(path: "events.jsonl"))),
+            sessions: try JournalCoding.decodeLines(Session.self, from: read(dir.appending(path: "sessions.jsonl")))
+        )
+    }
+
+    /// Replaces a day's rows; each file is written to a temporary file first, then moved into place.
+    /// Only for the command line, with the app quit: the app itself only ever appends.
+    func rewrite(day: String, frames: [FrameRecord], events: [EventRecord], sessions: [Session]) throws {
+        let dir = dayDir(day)
+        try jsonl(frames).write(to: dir.appending(path: "frames.jsonl"), atomically: true, encoding: .utf8)
+        try jsonl(events).write(to: dir.appending(path: "events.jsonl"), atomically: true, encoding: .utf8)
+        try jsonl(sessions).write(to: dir.appending(path: "sessions.jsonl"), atomically: true, encoding: .utf8)
+    }
+
+    /// `images` are paths relative to the day folder; missing files are fine.
+    func deleteImages(_ images: [String], day: String) {
+        for image in images { try? FileManager.default.removeItem(at: dayDir(day).appending(path: image)) }
+    }
+
+    /// Screenshots on disk for one day, as `frames/<id>.heic`.
+    func imagesOnDisk(day: String) -> [String] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dayDir(day).appending(path: "frames").path)) ?? []
+        return names.filter { $0.hasSuffix(".heic") }.sorted().map { "frames/\($0)" }
+    }
+
+    /// Bytes taken by some of a day's files, given relative to the day folder.
+    func size(day: String, files: [String]) -> Int64 {
+        files.reduce(0) { total, file in
+            total + Int64((try? dayDir(day).appending(path: file).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+    }
+
+    /// Every line of the journal's text files that mentions a term, ignoring case and accents, as "path: line".
+    func mentions(of terms: [String]) -> [String] {
+        let files = dayNames().sorted().flatMap { day in
+            ["frames.jsonl", "events.jsonl", "sessions.jsonl", "summary.md", ".digest.json"].map { "days/\(day)/\($0)" }
+        } + ["index.md", "week.md"]
+        return files.flatMap { file in
+            ((try? read(root.appending(path: file))) ?? "").split(separator: "\n")
+                .filter { line in terms.contains { line.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil } }
+                .map { "\(file): \($0)" }
+        }
+    }
+
     /// Rebuilds sessions.jsonl, summary.md and .digest.json for one day, then index.md and week.md.
     func summarize(day: String) throws {
         let dir = dayDir(day)
@@ -48,8 +103,7 @@ struct JournalStore {
         let sessions = SessionBuilder.sessions(from: frames)
         let digest = DaySummary.digest(day: day, sessions: sessions, events: events)
 
-        try sessions.map { try JournalCoding.line($0, timeZone: timeZone) }.joined(separator: "\n")
-            .write(to: dir.appending(path: "sessions.jsonl"), atomically: true, encoding: .utf8)
+        try jsonl(sessions).write(to: dir.appending(path: "sessions.jsonl"), atomically: true, encoding: .utf8)
         try DaySummary.markdown(digest, timeZone: timeZone).write(to: dir.appending(path: "summary.md"), atomically: true, encoding: .utf8)
         try JournalCoding.line(digest, timeZone: timeZone).write(to: digestURL(day), atomically: true, encoding: .utf8)
         try? FileManager.default.removeItem(at: dir.appending(path: ".index-line"))
@@ -112,8 +166,12 @@ struct JournalStore {
 
     private func digestURL(_ day: String) -> URL { dayDir(day).appending(path: ".digest.json") }
 
-    private func dayNames() -> [String] {
+    func dayNames() -> [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: daysDir.path)) ?? []).filter { !$0.hasPrefix(".") }
+    }
+
+    private func jsonl<T: Encodable>(_ rows: [T]) throws -> String {
+        try rows.map { try JournalCoding.line($0, timeZone: timeZone) + "\n" }.joined()
     }
 
     private func read(_ url: URL) throws -> String {

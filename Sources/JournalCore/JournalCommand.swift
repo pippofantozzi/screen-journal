@@ -1,0 +1,139 @@
+import Foundation
+
+/// What the app binary was asked to do: open the menu bar app, or run one journal command and exit.
+public enum Launch: Equatable, Sendable {
+    case app
+    /// `root` replaces ~/ScreenJournal; for tests against a copy, and then the app is left alone.
+    case command(JournalCommand, root: String?)
+    case invalid(String)
+
+    public static func parse(_ arguments: [String], timeZone: TimeZone) -> Launch {
+        let words = withoutSystemFlags(Array(arguments.dropFirst()))
+        guard let name = words.first(where: JournalCommand.names.contains) else { return .app }
+        var options = Options(words.filter { $0 != name })
+        let root = options.take("--root")
+        let command = JournalCommand.parse(name, &options, timeZone: timeZone)
+        if let error = options.error ?? options.leftover { return .invalid(error) }
+        switch command {
+        case .success(let command): return .command(command, root: root)
+        case .failure(let usage): return .invalid(usage.message)
+        }
+    }
+
+    /// Finder and Xcode add `-psn_…` and `-NS… value` pairs.
+    private static func withoutSystemFlags(_ words: [String]) -> [String] {
+        var kept: [String] = []
+        var skipValue = false
+        for word in words {
+            if skipValue { skipValue = false; continue }
+            if word.hasPrefix("-psn_") { continue }
+            if word.hasPrefix("-NS") { skipValue = true; continue }
+            kept.append(word)
+        }
+        return kept
+    }
+}
+
+public enum JournalCommand: Equatable, Sendable {
+    case forget(Forget.Target, apply: Bool)
+    case tidy(keepDays: Int, apply: Bool)
+    case rebuild
+
+    public struct Usage: Error, Equatable {
+        public let message: String
+    }
+
+    static let names: Set<String> = ["forget", "tidy", "rebuild"]
+
+    static let usage = """
+    Usage:
+      ScreenJournal forget --from 2026-10-21T18:57 --to 2026-10-21T19:00 [--apply]
+      ScreenJournal forget --term WhatsApp [--term …] [--apply]
+      ScreenJournal tidy --keep-days 7 [--apply]
+      ScreenJournal rebuild
+    """
+
+    fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
+        switch name {
+        case "forget": forget(&options, timeZone: timeZone)
+        case "tidy": tidy(&options)
+        default: .success(.rebuild)
+        }
+    }
+
+    private static func forget(_ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
+        let apply = options.flag("--apply")
+        let terms = options.takeAll("--term").map { $0.trimmingCharacters(in: .whitespaces) }
+        let from = options.take("--from"), to = options.take("--to")
+        switch (terms.isEmpty, from, to) {
+        case (false, nil, nil):
+            return terms.contains(where: \.isEmpty) ? fail("A --term can't be blank.") : .success(.forget(.terms(terms), apply: apply))
+        case (true, let from?, let to?):
+            guard let start = localDate(from, timeZone), let end = localDate(to, timeZone) else {
+                return fail("Times look like 2026-10-21T18:57 or 2026-10-21T18:57:30, in local time.")
+            }
+            return start < end ? .success(.forget(.range(from: start, to: end), apply: apply)) : fail("--from must come before --to.")
+        default:
+            return fail("forget takes either --from and --to, or one or more --term.")
+        }
+    }
+
+    private static func tidy(_ options: inout Options) -> Result<JournalCommand, Usage> {
+        let apply = options.flag("--apply")
+        guard let days = options.take("--keep-days").flatMap(Int.init), days >= 0 else {
+            return fail("tidy needs --keep-days with a whole number of days, 0 or more.")
+        }
+        return .success(.tidy(keepDays: days, apply: apply))
+    }
+
+    private static func localDate(_ text: String, _ timeZone: TimeZone) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        for format in ["yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss"] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: text) { return date }
+        }
+        return nil
+    }
+
+    private static func fail(_ message: String) -> Result<JournalCommand, Usage> {
+        .failure(Usage(message: message + "\n\n" + usage))
+    }
+}
+
+/// `--name value` pairs and bare flags, consumed as they're read so anything left over is an error.
+private struct Options {
+    private var words: [String]
+    private(set) var error: String?
+
+    init(_ words: [String]) { self.words = words }
+
+    var leftover: String? {
+        words.isEmpty ? nil : "Unexpected: \(words.joined(separator: " "))\n\n\(JournalCommand.usage)"
+    }
+
+    mutating func flag(_ name: String) -> Bool {
+        guard let i = words.firstIndex(of: name) else { return false }
+        words.remove(at: i)
+        return true
+    }
+
+    mutating func take(_ name: String) -> String? {
+        takeAll(name).last
+    }
+
+    mutating func takeAll(_ name: String) -> [String] {
+        var values: [String] = []
+        while let i = words.firstIndex(of: name) {
+            guard i + 1 < words.count, !words[i + 1].hasPrefix("--") else {
+                error = "\(name) needs a value.\n\n\(JournalCommand.usage)"
+                words.remove(at: i)
+                continue
+            }
+            values.append(words[i + 1])
+            words.removeSubrange(i...i + 1)
+        }
+        return values
+    }
+}

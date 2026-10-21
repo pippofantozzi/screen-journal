@@ -61,6 +61,20 @@ struct SessionBuilderTests {
 }
 
 struct DaySummaryTests {
+    @Test func countsWindowSwitchesWithinOneApp() {
+        let sessions = SessionBuilder.sessions(from: [
+            frame("a", at: 0, for: 10, app: "Chrome", title: "CRM"),
+            frame("b", at: 10, for: 10, app: "Chrome", title: "Bank"),
+            frame("c", at: 20, for: 10, app: "Chrome", title: "CRM"),
+            frame("d", at: 30, for: 10, app: "Chrome", title: "Bank"),
+        ])
+        let digest = DaySummary.digest(day: "d", sessions: sessions, events: [])
+        #expect(digest.transitions.isEmpty)
+        #expect(digest.windowTransitions.first == .init(from: "Chrome — CRM", to: "Chrome — Bank", count: 2))
+        #expect(digest.windowTransitions.map(\.count).reduce(0, +) == 3)
+        #expect(DaySummary.markdown(digest, timeZone: rome).contains("## Frequent window switches\n\n- 2× Chrome — CRM → Chrome — Bank"))
+    }
+
     @Test func totalsTimePerAppAndWindowLongestFirst() {
         let sessions = SessionBuilder.sessions(from: [
             frame("a", at: 0, for: 60, app: "Mail", title: "Inbox"),
@@ -185,6 +199,13 @@ struct DigestCodingTests {
         ]), events: [note])
         let line = try JournalCoding.line(digest, timeZone: rome)
         #expect(try JournalCoding.decodeLines(DayDigest.self, from: line) == [digest])
+    }
+
+    @Test func decodesDigestWrittenBeforeWindowTransitions() throws {
+        let old = #"{"activeSeconds":60,"apps":[],"day":"2026-10-20","notes":[],"sessionCount":1,"transitions":[],"windows":[]}"#
+        let decoded = try JournalCoding.decodeLines(DayDigest.self, from: old)
+        #expect(decoded.first?.windowTransitions == [])
+        #expect(decoded.first?.activeSeconds == 60)
     }
 }
 

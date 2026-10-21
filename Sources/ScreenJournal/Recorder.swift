@@ -75,7 +75,8 @@ final class Recorder {
                 case .unchanged:
                     open[shot.index]?.end = now
                 case .record(let saveImage):
-                    try await record(shot, top: top, focused: focused, signature: signature, saveImage: saveImage, at: now)
+                    let freshImage = { policy.needsFreshImage(decided: saveImage, newLineCount: $0) }
+                    try await record(shot, top: top, focused: focused, signature: signature, freshImage: freshImage, at: now)
                     kept += 1
                 }
             }
@@ -98,14 +99,12 @@ final class Recorder {
     }
 
     private func record(
-        _ shot: DisplayShot, top: WindowInfo?, focused: Bool, signature: FrameSignature, saveImage: Bool, at now: Date
+        _ shot: DisplayShot, top: WindowInfo?, focused: Bool, signature: FrameSignature,
+        freshImage: (_ newLineCount: Int) -> Bool, at now: Date
     ) async throws {
         close(display: shot.index, at: now)
         let id = DayStamp(now, in: store.timeZone).frameID(display: shot.index)
         let previous = memory[shot.index]
-        // Image paths are relative to the day folder, so a new day always gets its own image.
-        let shared = previous.flatMap { !saveImage && store.day(of: $0.imageAt) == store.day(of: now) ? $0 : nil }
-        let image = try shared?.image ?? store.writeImage(shot.image, id: id, at: now)
 
         let ocr = await TextRecognizer.text(in: shot.image)
         let day = store.day(of: now)
@@ -116,6 +115,10 @@ final class Recorder {
         }
         let newLines = visit.map { TextDelta.newLines(ocr, seen: $0.seen) } ?? []
         let seen = visit.map { $0.seen.union(newLines) } ?? TextDelta.lineSet(ocr)
+
+        // Image paths are relative to the day folder, so a new day always gets its own image.
+        let shared = previous.flatMap { !freshImage(newLines.count) && store.day(of: $0.imageAt) == day ? $0 : nil }
+        let image = try shared?.image ?? store.writeImage(shot.image, id: id, at: now)
 
         memory[shot.index] = DisplayMemory(signature: signature, seen: seen, day: day, image: image, imageAt: shared?.imageAt ?? now)
         open[shot.index] = FrameRecord(

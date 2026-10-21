@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-@main
 struct ScreenJournalApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 

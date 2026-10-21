@@ -1,4 +1,5 @@
 import CoreGraphics
+import JournalCore
 import ScreenCaptureKit
 
 struct DisplayShot {
@@ -12,10 +13,15 @@ enum ScreenCapturer {
     /// Pixels per point: enough for OCR of normal UI text at a fraction of full-Retina cost.
     static let scale = 1.5
 
+    /// System UI drawn over her apps: notification banners (message previews), Control Center, password prompts.
+    /// The Dock stays, since it also draws the wallpaper.
+    static let overlays = SystemApps.ignored.subtracting(["com.apple.dock"])
+
     static func captureAll(excludingBundleIDs excluded: Set<String>) async throws -> [DisplayShot] {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let hidden = content.applications.filter {
-            excluded.contains($0.bundleIdentifier) || $0.bundleIdentifier == Bundle.main.bundleIdentifier
+            excluded.contains($0.bundleIdentifier) || overlays.contains($0.bundleIdentifier)
+                || $0.bundleIdentifier == Bundle.main.bundleIdentifier
         }
         let main = CGMainDisplayID()
         let displays = content.displays.sorted {

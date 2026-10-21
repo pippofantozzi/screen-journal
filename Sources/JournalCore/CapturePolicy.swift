@@ -66,6 +66,8 @@ public struct CapturePolicy: Sendable {
     /// Small changes still save an image at most this often.
     public var imageInterval: TimeInterval
     public var privateTitleMarkers: [String]
+    /// This many new OCR lines earn a fresh image even when the pixels barely moved (a page finished loading).
+    public var freshImageLines: Int
 
     public init(
         idleThreshold: Double = 120,
@@ -73,7 +75,8 @@ public struct CapturePolicy: Sendable {
         minChangeRatio: Double = 0.002,
         bigChangeRatio: Double = 0.15,
         imageInterval: TimeInterval = 60,
-        privateTitleMarkers: [String] = ["Private Browsing", "Incognito", "InPrivate", "Private Window"]
+        privateTitleMarkers: [String] = ["Private Browsing", "Incognito", "InPrivate", "Private Window"],
+        freshImageLines: Int = 10
     ) {
         self.idleThreshold = idleThreshold
         self.excludedBundleIDs = excludedBundleIDs
@@ -81,6 +84,7 @@ public struct CapturePolicy: Sendable {
         self.bigChangeRatio = bigChangeRatio
         self.imageInterval = imageInterval
         self.privateTitleMarkers = privateTitleMarkers
+        self.freshImageLines = freshImageLines
     }
 
     public func gate(_ c: CaptureConditions) -> CaptureGate {
@@ -103,6 +107,11 @@ public struct CapturePolicy: Sendable {
         if ratio >= bigChangeRatio { return .record(saveImage: true) }
         guard let lastImageAt else { return .record(saveImage: true) }
         return .record(saveImage: now.timeIntervalSince(lastImageAt) >= imageInterval)
+    }
+
+    /// Whether to save an image once OCR has shown how much new text the frame brought.
+    public func needsFreshImage(decided saveImage: Bool, newLineCount: Int) -> Bool {
+        saveImage || newLineCount >= freshImageLines
     }
 
     private func isPrivate(_ title: String?) -> Bool {

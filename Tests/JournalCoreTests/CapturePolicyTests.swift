@@ -82,6 +82,20 @@ struct FrameDecisionTests {
     }
 }
 
+struct FreshImageTests {
+    let policy = CapturePolicy(freshImageLines: 10)
+
+    @Test(arguments: [
+        (true, 0, true),
+        (false, 9, false),
+        (false, 10, true),
+        (false, 53, true),
+    ])
+    func savesWhenLotsOfTextAppears(saveImage: Bool, newLineCount: Int, expected: Bool) {
+        #expect(policy.needsFreshImage(decided: saveImage, newLineCount: newLineCount) == expected)
+    }
+}
+
 struct ThumbnailTests {
     @Test func identicalThumbnailsHaveNoChange() {
         #expect(Thumbnail.solid(50).changeRatio(to: .solid(50)) == 0)

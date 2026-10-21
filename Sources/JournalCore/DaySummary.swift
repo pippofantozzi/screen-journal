@@ -18,25 +18,36 @@ public struct DayDigest: Codable, Equatable, Sendable {
     public let apps: [Total]
     public let windows: [Total]
     public let transitions: [Transition]
+    /// Switches between windows, named like `windows`. Shows ping-pong between tabs of one app.
+    public let windowTransitions: [Transition]
     public let notes: [EventRecord]
+}
+
+extension DayDigest {
+    /// Tolerates digests written before `windowTransitions` existed.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        day = try c.decode(String.self, forKey: .day)
+        activeSeconds = try c.decode(TimeInterval.self, forKey: .activeSeconds)
+        sessionCount = try c.decode(Int.self, forKey: .sessionCount)
+        apps = try c.decode([Total].self, forKey: .apps)
+        windows = try c.decode([Total].self, forKey: .windows)
+        transitions = try c.decode([Transition].self, forKey: .transitions)
+        windowTransitions = try c.decodeIfPresent([Transition].self, forKey: .windowTransitions) ?? []
+        notes = try c.decode([EventRecord].self, forKey: .notes)
+    }
 }
 
 public enum DaySummary {
     public static func digest(day: String, sessions: [Session], events: [EventRecord]) -> DayDigest {
-        let appNames = sessions.map { $0.app ?? "Unknown" }
-        let transitions = zip(appNames, appNames.dropFirst())
-            .filter { $0 != $1 }
-            .map { DayDigest.Transition(from: $0, to: $1, count: 1) }
-
-        return DayDigest(
+        DayDigest(
             day: day,
             activeSeconds: sessions.reduce(0) { $0 + $1.duration },
             sessionCount: sessions.count,
-            apps: totals(sessions) { $0.app ?? "Unknown" },
-            windows: totals(sessions) { s in
-                [s.app ?? "Unknown", s.windowTitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")
-            },
-            transitions: transitions.merged(),
+            apps: totals(sessions, by: appName),
+            windows: totals(sessions, by: windowName),
+            transitions: switches(sessions.map(appName)),
+            windowTransitions: switches(sessions.map(windowName)),
             notes: events.filter { $0.kind == .note }
         )
     }
@@ -55,8 +66,8 @@ public enum DaySummary {
         }
         lines += ["## Time per app", ""] + d.apps.prefix(limit).map { "- \(Format.clock($0.seconds)) \($0.name)" } + [""]
         lines += ["## Top windows", ""] + d.windows.prefix(limit).map { "- \(Format.clock($0.seconds)) \($0.name)" } + [""]
-        lines += ["## Frequent app switches", ""]
-        lines += d.transitions.prefix(limit).map { "- \($0.count)× \($0.from) → \($0.to)" }
+        lines += ["## Frequent app switches", ""] + Format.switches(d.transitions, limit: limit) + [""]
+        lines += ["## Frequent window switches", ""] + Format.switches(d.windowTransitions, limit: limit)
         return lines.joined(separator: "\n") + "\n"
     }
 
@@ -66,8 +77,22 @@ public enum DaySummary {
         return "- [\(d.day)](days/\(d.day)/summary.md) — \(Format.clock(d.activeSeconds)) active, \(d.notes.count) notes — \(top)"
     }
 
+    private static func appName(_ s: Session) -> String { s.app ?? "Unknown" }
+
+    private static func windowName(_ s: Session) -> String {
+        [appName(s), s.windowTitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")
+    }
+
     private static func totals(_ sessions: [Session], by key: (Session) -> String) -> [DayDigest.Total] {
         sessions.map { DayDigest.Total(name: key($0), seconds: $0.duration) }.merged()
+    }
+
+    /// Consecutive names that differ, counted per pair.
+    private static func switches(_ names: [String]) -> [DayDigest.Transition] {
+        zip(names, names.dropFirst())
+            .filter { $0 != $1 }
+            .map { DayDigest.Transition(from: $0, to: $1, count: 1) }
+            .merged()
     }
 }
 
@@ -102,5 +127,9 @@ enum Format {
         f.timeZone = zone
         f.dateFormat = "HH:mm"
         return f.string(from: date)
+    }
+
+    static func switches(_ transitions: [DayDigest.Transition], limit: Int) -> [String] {
+        transitions.prefix(limit).map { "- \($0.count)× \($0.from) → \($0.to)" }
     }
 }

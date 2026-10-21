@@ -40,6 +40,7 @@ struct WeekDigestTests {
         #expect(md.contains("Active: 21m across 3 days."))
         #expect(md.contains("- 17m Excel\n- 4m Mail"))
         #expect(md.contains("- 3× Excel → Mail"))
+        #expect(md.contains("## Frequent window switches\n\n- 2× Excel — Report.xlsx → Mail — Inbox\n- 1× Excel — Report.xlsx → Mail — Draft"))
         #expect(md.contains("- 3 days, 17m Excel — Report.xlsx"))
     }
 
