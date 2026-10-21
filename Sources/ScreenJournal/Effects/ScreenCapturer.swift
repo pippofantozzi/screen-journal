@@ -9,6 +9,9 @@ struct DisplayShot {
 
 /// Thin adapter over ScreenCaptureKit: one still per display, main display first, private apps blanked out.
 enum ScreenCapturer {
+    /// Pixels per point: enough for OCR of normal UI text at a fraction of full-Retina cost.
+    static let scale = 1.5
+
     static func captureAll(excludingBundleIDs excluded: Set<String>) async throws -> [DisplayShot] {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let hidden = content.applications.filter {
@@ -24,8 +27,8 @@ enum ScreenCapturer {
             let filter = SCContentFilter(display: display, excludingApplications: hidden, exceptingWindows: [])
             let config = SCStreamConfiguration()
             let mode = CGDisplayCopyDisplayMode(display.displayID)
-            config.width = mode?.pixelWidth ?? display.width
-            config.height = mode?.pixelHeight ?? display.height
+            config.width = min(mode?.pixelWidth ?? display.width, Int(Double(display.width) * scale))
+            config.height = min(mode?.pixelHeight ?? display.height, Int(Double(display.height) * scale))
             config.showsCursor = false
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
             shots.append(DisplayShot(index: offset + 1, bounds: CGDisplayBounds(display.displayID), image: image))

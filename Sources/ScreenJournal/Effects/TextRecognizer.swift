@@ -7,7 +7,8 @@ enum TextRecognizer {
         await Task.detached(priority: .utility) {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
+            // Correction costs ~4× the CPU for little accuracy, and "fixes" code, paths and names.
+            request.usesLanguageCorrection = false
             request.automaticallyDetectsLanguage = true
             try? VNImageRequestHandler(cgImage: image).perform([request])
             return (request.results ?? [])

@@ -61,12 +61,18 @@ struct MenuContent: View {
     private var headline: String {
         switch model.status {
         case .starting: "Starting…"
-        case .recording: "Recording · \(model.framesKept) moments this session"
+        case .recording: recordingLine
         case .paused: pausedLine
         case .resting: "Resting while you're away"
         case .needsScreenAccess: "Needs Screen Recording access"
         case .failing: "Can't capture right now"
         }
+    }
+
+    private var recordingLine: String {
+        let moments = model.momentsToday == 1 ? "1 moment" : "\(model.momentsToday) moments"
+        guard model.bytesToday > 0 else { return "Recording · \(moments) today" }
+        return "Recording · \(moments) today · \(ByteCountFormatter.string(fromByteCount: model.bytesToday, countStyle: .file))"
     }
 
     private var pausedLine: String {

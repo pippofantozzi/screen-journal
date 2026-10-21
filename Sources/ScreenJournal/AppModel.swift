@@ -21,6 +21,14 @@ enum Preferences {
     }
 }
 
+/// What was on screen when she asked to note it.
+struct Moment {
+    let app: String?
+    let bundleID: String?
+    let windowTitle: String?
+    let frameID: String?
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -30,15 +38,20 @@ final class AppModel {
 
     private(set) var status: Status = .starting
     private(set) var pausedUntil: Date?
-    private(set) var framesKept = 0
+    private(set) var momentsToday = 0
+    private(set) var bytesToday: Int64 = 0
 
     let store = JournalStore.default
     let updater = Updater()
     private let recorder: Recorder
     private var loop: Task<Void, Never>?
-    private var lastSummary = Date()
+    private var lastSummary = Date.distantPast
+    private var lastCatchUp = Date()
+    private var tallyDay = ""
+    private var lastSized = Date.distantPast
     private var appSwitchToken: NSObjectProtocol?
     private let defaults = UserDefaults.standard
+    private let ownBundleID = Bundle.main.bundleIdentifier
 
     init() {
         Preferences.registerDefaults()
@@ -57,7 +70,8 @@ final class AppModel {
     func start() {
         guard loop == nil else { return }
         try? store.installGuide()
-        recorder.record(EventRecord(at: Date(), kind: .started))
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        recorder.record(EventRecord(at: Date(), kind: .started, version: version))
         observeAppSwitches()
         catchUp()
         loop = Task { [weak self] in
@@ -89,12 +103,27 @@ final class AppModel {
         Task { await tick() }
     }
 
-    func addNote(_ text: String) {
+    /// Read before the note window opens and takes focus.
+    func currentMoment() -> Moment {
+        let front = ActivityReader.frontmost
+        let frame = recorder.focusedFrame
+        let frontIsHers = front.map {
+            !SystemApps.isIgnored(app: $0.localizedName, bundleID: $0.bundleIdentifier, ownBundleID: ownBundleID)
+        } ?? false
+        return Moment(
+            app: frontIsHers ? front?.localizedName : frame?.app,
+            bundleID: frontIsHers ? front?.bundleIdentifier : frame?.bundleID,
+            windowTitle: frame?.windowTitle,
+            frameID: frame?.id
+        )
+    }
+
+    func addNote(_ text: String, about moment: Moment) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         recorder.record(EventRecord(
-            at: Date(), kind: .note, app: ActivityReader.frontmost?.localizedName,
-            bundleID: ActivityReader.frontmost?.bundleIdentifier, text: trimmed
+            at: Date(), kind: .note, app: moment.app, bundleID: moment.bundleID,
+            windowTitle: moment.windowTitle, frameID: moment.frameID, text: trimmed
         ))
     }
 
@@ -113,7 +142,7 @@ final class AppModel {
         let policy = CapturePolicy(excludedBundleIDs: Set(defaults.stringArray(forKey: Preferences.excludedApps) ?? []))
         switch await recorder.tick(policy: policy, isPaused: isPaused) {
         case .captured(let kept):
-            framesKept += kept
+            tally(kept: kept)
             status = .recording
         case .skipped(.paused): status = .paused
         case .skipped: status = .resting
@@ -123,12 +152,31 @@ final class AppModel {
         housekeepIfDue()
     }
 
-    /// Hourly: refresh today's summary, then the same catch-up as launch.
+    /// Today's moments: rows already on disk at launch or day change, plus what this process has kept since.
+    /// Disk size is re-measured every few minutes, not on every menu open.
+    private func tally(kept: Int) {
+        let today = store.day(of: Date())
+        if today != tallyDay {
+            tallyDay = today
+            momentsToday = store.frameCount(day: today)
+            lastSized = .distantPast
+        }
+        momentsToday += kept
+        guard Date().timeIntervalSince(lastSized) > 300 else { return }
+        lastSized = Date()
+        bytesToday = store.size(day: today)
+    }
+
+    /// Today's summary every 15 minutes; the launch catch-up hourly.
     private func housekeepIfDue() {
-        guard Date().timeIntervalSince(lastSummary) > 3600 else { return }
-        lastSummary = Date()
-        try? store.summarize(day: store.day(of: Date()))
-        catchUp()
+        if Date().timeIntervalSince(lastSummary) > 15 * 60 {
+            lastSummary = Date()
+            try? store.summarize(day: store.day(of: Date()))
+        }
+        if Date().timeIntervalSince(lastCatchUp) > 3600 {
+            lastCatchUp = Date()
+            catchUp()
+        }
     }
 
     /// Summarizes days missed while the Mac was off, and applies retention.
@@ -144,7 +192,9 @@ final class AppModel {
         ) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             MainActor.assumeIsolated {
-                self?.recorder.record(EventRecord(at: Date(), kind: .appSwitch, app: app?.localizedName, bundleID: app?.bundleIdentifier))
+                guard let self, !SystemApps.isIgnored(app: app?.localizedName, bundleID: app?.bundleIdentifier, ownBundleID: self.ownBundleID)
+                else { return }
+                self.recorder.record(EventRecord(at: Date(), kind: .appSwitch, app: app?.localizedName, bundleID: app?.bundleIdentifier))
             }
         }
     }

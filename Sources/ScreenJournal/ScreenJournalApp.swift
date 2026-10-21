@@ -18,8 +18,10 @@ struct ScreenJournalApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     lazy var windows = WindowPresenter(model: model)
+    private var terminationSignal: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        quitGracefullyOnSIGTERM()
         if model.isOnboarded {
             model.start()
         } else {
@@ -29,6 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         model.stop()
+    }
+
+    /// `kill`/`pkill` would otherwise drop the open frames; route them through a normal quit so they're written.
+    private func quitGracefullyOnSIGTERM() {
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { NSApp.terminate(nil) }
+        source.resume()
+        terminationSignal = source
     }
 }
 
@@ -69,9 +80,10 @@ final class WindowPresenter {
     }
 
     func showNote() {
+        let moment = model.currentMoment()
         show("note", title: "Note this moment", size: CGSize(width: 420, height: 170)) {
             NoteView { [weak self] text in
-                self?.model.addNote(text)
+                self?.model.addNote(text, about: moment)
                 self?.close("note")
             }
         }

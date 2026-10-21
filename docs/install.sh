@@ -13,7 +13,12 @@ echo "Downloading Screen Journal…"
 curl -fsSL "$URL" -o "$TMP/ScreenJournal.zip"
 ditto -x -k "$TMP/ScreenJournal.zip" "$TMP"
 
-pkill -x ScreenJournal 2>/dev/null || true
+# Quit gracefully so the open frames get written; force it only if it hangs.
+if pgrep -x ScreenJournal >/dev/null; then
+  osascript -e 'quit app id "com.filippofantozzi.ScreenJournal"' 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x ScreenJournal >/dev/null || break; sleep 0.5; done
+  pkill -x ScreenJournal 2>/dev/null || true
+fi
 rm -rf "$APP"
 mv "$TMP/ScreenJournal.app" "$APP"
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true

@@ -1,9 +1,11 @@
+import Foundation
 import Testing
 @testable import JournalCore
 
 struct CapturePolicyTests {
     let policy = CapturePolicy(idleThreshold: 120, excludedBundleIDs: ["com.1password.1password"], minChangeRatio: 0.01)
-    let active = CaptureConditions(isPaused: false, isLocked: false, idleSeconds: 3, frontmostBundleID: "com.apple.Safari")
+    let active = CaptureConditions(isPaused: false, isLocked: false, idleSeconds: 3,
+                                   frontmostBundleID: "com.apple.Safari", frontmostWindowTitle: "Docs")
 
     @Test func capturesWhenActive() {
         #expect(policy.gate(active) == .capture)
@@ -34,26 +36,49 @@ struct CapturePolicyTests {
         #expect(policy.gate(c) == .skip(.excludedApp))
     }
 
-    @Test func keepsFirstFrame() {
-        let sig = FrameSignature(thumbnail: .solid(10), bundleID: "a", windowTitle: "t")
-        #expect(policy.decide(current: sig, previous: nil) == .keep)
+    @Test func skipsPrivateBrowsingWindowsCaseInsensitively() {
+        var c = active
+        c.frontmostWindowTitle = "GitHub — incognito"
+        #expect(policy.gate(c) == .skip(.privateWindow))
     }
 
-    @Test func unchangedWhenPixelsAndWindowMatch() {
-        let sig = FrameSignature(thumbnail: .solid(10), bundleID: "a", windowTitle: "t")
-        #expect(policy.decide(current: sig, previous: sig) == .unchanged)
+    @Test func excludedAppWinsOverPrivateWindow() {
+        var c = active
+        c.frontmostBundleID = "com.1password.1password"
+        c.frontmostWindowTitle = "Private Browsing"
+        #expect(policy.gate(c) == .skip(.excludedApp))
     }
 
-    @Test func keepsWhenWindowTitleChangesEvenIfPixelsMatch() {
-        let a = FrameSignature(thumbnail: .solid(10), bundleID: "a", windowTitle: "Inbox")
-        let b = FrameSignature(thumbnail: .solid(10), bundleID: "a", windowTitle: "Draft")
-        #expect(policy.decide(current: b, previous: a) == .keep)
+    @Test func privateWindowOpensSkippedGap() {
+        #expect(SkipReason.privateWindow.eventKind == .skipped)
+    }
+}
+
+struct FrameDecisionTests {
+    let policy = CapturePolicy(minChangeRatio: 0.01, bigChangeRatio: 0.15, imageInterval: 60)
+    let now = Date(timeIntervalSince1970: 1_000)
+
+    static func sig(_ thumbnail: Thumbnail = .solid(10), app: String = "a", title: String = "t") -> FrameSignature {
+        FrameSignature(thumbnail: thumbnail, bundleID: app, windowTitle: title)
     }
 
-    @Test func keepsWhenEnoughPixelsChange() {
-        let a = FrameSignature(thumbnail: .solid(10), bundleID: "a", windowTitle: "t")
-        let b = FrameSignature(thumbnail: .solid(10).painting(count: 5, value: 200), bundleID: "a", windowTitle: "t")
-        #expect(policy.decide(current: b, previous: a) == .keep)
+    static let small = Thumbnail.solid(10).painting(count: 5, value: 200)
+    static let big = Thumbnail.solid(10).painting(count: 15, value: 200)
+
+    @Test(arguments: [
+        // (name, current, previous, seconds since last image, expected)
+        ("first frame", Self.sig(), nil, nil, FrameDecision.record(saveImage: true)),
+        ("app changed", Self.sig(app: "b"), Self.sig(), 1, .record(saveImage: true)),
+        ("title changed", Self.sig(title: "Draft"), Self.sig(), 1, .record(saveImage: true)),
+        ("pixels identical", Self.sig(), Self.sig(), 1000, .unchanged),
+        ("big change", Self.sig(big), Self.sig(), 1, .record(saveImage: true)),
+        ("small change, image stale", Self.sig(small), Self.sig(), 60, .record(saveImage: true)),
+        ("small change, no image yet", Self.sig(small), Self.sig(), nil, .record(saveImage: true)),
+        ("small change, image fresh", Self.sig(small), Self.sig(), 59, .record(saveImage: false)),
+    ] as [(String, FrameSignature, FrameSignature?, TimeInterval?, FrameDecision)])
+    func decides(_ name: String, current: FrameSignature, previous: FrameSignature?, sinceImage: TimeInterval?, expected: FrameDecision) {
+        let lastImageAt = sinceImage.map { now - $0 }
+        #expect(policy.decide(current: current, previous: previous, lastImageAt: lastImageAt, now: now) == expected, "\(name)")
     }
 }
 

@@ -21,7 +21,7 @@ enum ActivityReader {
             return WindowInfo(
                 app: w[kCGWindowOwnerName as String] as? String ?? "Unknown",
                 bundleID: NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
-                title: (w[kCGWindowName as String] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                title: WindowTitle.stable(w[kCGWindowName as String] as? String),
                 bounds: bounds,
                 layer: w[kCGWindowLayer as String] as? Int ?? 0
             )

@@ -10,7 +10,7 @@ func frame(_ id: String, at offset: TimeInterval, for duration: TimeInterval, ap
     FrameRecord(
         id: id, start: base + offset, end: base + offset + duration,
         display: 1, focused: focused, app: app, bundleID: "id.\(app)", windowTitle: title,
-        image: "frames/\(id).heic", text: nil, textSameAs: nil
+        image: "frames/\(id).heic", text: nil, newLines: nil
     )
 }
 
@@ -125,8 +125,8 @@ struct WindowPlacementTests {
     let left = CGRect(x: 0, y: 0, width: 1000, height: 800)
     let right = CGRect(x: 1000, y: 0, width: 1000, height: 800)
 
-    func window(_ app: String, _ bounds: CGRect, layer: Int = 0) -> WindowInfo {
-        WindowInfo(app: app, bundleID: nil, title: nil, bounds: bounds, layer: layer)
+    func window(_ app: String, _ bounds: CGRect, layer: Int = 0, bundleID: String? = nil) -> WindowInfo {
+        WindowInfo(app: app, bundleID: bundleID, title: nil, bounds: bounds, layer: layer)
     }
 
     @Test func picksFrontmostNormalWindowCenteredOnDisplay() {
@@ -142,6 +142,49 @@ struct WindowPlacementTests {
     @Test func ignoresTinyWindows() {
         let windows = [window("Tooltip", CGRect(x: 10, y: 10, width: 20, height: 20)), window("Mail", left)]
         #expect(WindowPlacement.topWindow(on: left, among: windows)?.app == "Mail")
+    }
+
+    @Test func skipsSystemDialogsAboveRealWindows() {
+        let windows = [
+            window("universalAccessAuthWarn", CGRect(x: 350, y: 300, width: 300, height: 150)),
+            window("Ghostty", left, bundleID: "com.mitchellh.ghostty"),
+        ]
+        #expect(WindowPlacement.topWindow(on: left, among: windows)?.app == "Ghostty")
+    }
+
+    @Test func skipsOwnWindows() {
+        let windows = [window("Screen Journal", left, bundleID: "me.journal"), window("Mail", left)]
+        #expect(WindowPlacement.topWindow(on: left, among: windows, ownBundleID: "me.journal")?.app == "Mail")
+    }
+
+    @Test func prefersFrontmostAppsWindowOnThatDisplay() {
+        let windows = [
+            window("Slack", CGRect(x: 100, y: 100, width: 300, height: 300), bundleID: "com.tinyspeck.slackmacgap"),
+            window("Mail", left, bundleID: "com.apple.mail"),
+        ]
+        #expect(WindowPlacement.topWindow(on: left, among: windows, preferring: "com.apple.mail")?.app == "Mail")
+        #expect(WindowPlacement.topWindow(on: left, among: windows, preferring: "com.other")?.app == "Slack")
+    }
+}
+
+struct SystemAppsTests {
+    @Test func matchesByNameOrBundleIDOrSelf() {
+        #expect(SystemApps.isIgnored(app: "SecurityAgent", bundleID: nil, ownBundleID: nil))
+        #expect(SystemApps.isIgnored(app: "Whatever", bundleID: "com.apple.dock", ownBundleID: nil))
+        #expect(SystemApps.isIgnored(app: "Screen Journal", bundleID: "me.journal", ownBundleID: "me.journal"))
+        #expect(!SystemApps.isIgnored(app: "Mail", bundleID: "com.apple.mail", ownBundleID: "me.journal"))
+        #expect(!SystemApps.isIgnored(app: nil, bundleID: nil, ownBundleID: nil))
+    }
+}
+
+struct DigestCodingTests {
+    @Test func roundTripsDayDigest() throws {
+        let note = EventRecord(at: base, kind: .note, windowTitle: "Inbox", frameID: "120000-d1", text: "hi")
+        let digest = DaySummary.digest(day: "2026-10-21", sessions: SessionBuilder.sessions(from: [
+            frame("a", at: 0, for: 10, app: "Mail"), frame("b", at: 10, for: 10, app: "Excel"),
+        ]), events: [note])
+        let line = try JournalCoding.line(digest, timeZone: rome)
+        #expect(try JournalCoding.decodeLines(DayDigest.self, from: line) == [digest])
     }
 }
 

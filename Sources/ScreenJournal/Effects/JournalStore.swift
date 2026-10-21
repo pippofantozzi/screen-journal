@@ -40,7 +40,7 @@ struct JournalStore {
         }
     }
 
-    /// Rebuilds sessions.jsonl, summary.md and the index line for one day, then index.md.
+    /// Rebuilds sessions.jsonl, summary.md and .digest.json for one day, then index.md and week.md.
     func summarize(day: String) throws {
         let dir = dayDir(day)
         let frames = try JournalCoding.decodeLines(FrameRecord.self, from: read(dir.appending(path: "frames.jsonl")))
@@ -51,13 +51,33 @@ struct JournalStore {
         try sessions.map { try JournalCoding.line($0, timeZone: timeZone) }.joined(separator: "\n")
             .write(to: dir.appending(path: "sessions.jsonl"), atomically: true, encoding: .utf8)
         try DaySummary.markdown(digest, timeZone: timeZone).write(to: dir.appending(path: "summary.md"), atomically: true, encoding: .utf8)
-        try DaySummary.indexLine(digest).write(to: dir.appending(path: ".index-line"), atomically: true, encoding: .utf8)
+        try JournalCoding.line(digest, timeZone: timeZone).write(to: digestURL(day), atomically: true, encoding: .utf8)
+        try? FileManager.default.removeItem(at: dir.appending(path: ".index-line"))
         try writeIndex()
     }
 
-    /// Days that have frames but no summary yet, e.g. after the Mac was off at midnight.
+    /// Past days with frames but a missing summary or digest: the Mac was off at midnight,
+    /// an older version captured them, or the `forget` skill cleared them for a rebuild.
     func unsummarizedDays(before today: String) -> [String] {
-        dayNames().filter { $0 < today && !FileManager.default.fileExists(atPath: dayDir($0).appending(path: "summary.md").path) }
+        let fm = FileManager.default
+        return dayNames().filter { day in
+            day < today && fm.fileExists(atPath: dayDir(day).appending(path: "frames.jsonl").path)
+                && !(fm.fileExists(atPath: digestURL(day).path) && fm.fileExists(atPath: dayDir(day).appending(path: "summary.md").path))
+        }
+    }
+
+    /// Frame rows written for one day.
+    func frameCount(day: String) -> Int {
+        guard let data = FileManager.default.contents(atPath: dayDir(day).appending(path: "frames.jsonl").path) else { return 0 }
+        return data.reduce(0) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 }
+    }
+
+    /// Bytes on disk for one day: screenshots plus logs.
+    func size(day: String) -> Int64 {
+        let files = FileManager.default.enumerator(at: dayDir(day), includingPropertiesForKeys: [.fileSizeKey])
+        return (files?.allObjects as? [URL] ?? []).reduce(0) { total, url in
+            total + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
     }
 
     func purge(keepDays: Int, today: String) throws {
@@ -67,14 +87,24 @@ struct JournalStore {
         try writeIndex()
     }
 
+    /// index.md and week.md, from each day's digest so older days are never re-parsed.
     private func writeIndex() throws {
-        let lines = dayNames().sorted(by: >).compactMap { try? read(dayDir($0).appending(path: ".index-line")) }
-        let body = "# Screen Journal\n\nNewest first. Each day links to its summary.\n\n" + lines.joined(separator: "\n") + "\n"
+        let digests = dayNames().sorted(by: >).compactMap(digest)
+        let body = "# Screen Journal\n\nNewest first. Each day links to its summary.\n\n"
+            + digests.map(DaySummary.indexLine).joined(separator: "\n") + "\n"
         try body.write(to: root.appending(path: "index.md"), atomically: true, encoding: .utf8)
+        try WeekDigest.markdown(Array(digests.prefix(7)), timeZone: timeZone)
+            .write(to: root.appending(path: "week.md"), atomically: true, encoding: .utf8)
     }
 
+    private func digest(_ day: String) -> DayDigest? {
+        try? JournalCoding.decodeLines(DayDigest.self, from: read(digestURL(day))).first
+    }
+
+    private func digestURL(_ day: String) -> URL { dayDir(day).appending(path: ".digest.json") }
+
     private func dayNames() -> [String] {
-        (try? FileManager.default.contentsOfDirectory(atPath: daysDir.path)) ?? []
+        ((try? FileManager.default.contentsOfDirectory(atPath: daysDir.path)) ?? []).filter { !$0.hasPrefix(".") }
     }
 
     private func read(_ url: URL) throws -> String {
