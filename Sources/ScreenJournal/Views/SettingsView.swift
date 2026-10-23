@@ -39,8 +39,14 @@ struct SettingsView: View {
             }
 
             Section {
-                TextField(language("What you do"), text: $about, prompt: Text(language("I do marketing for clients, so Instagram is usually work.")), axis: .vertical)
-                    .lineLimit(3...6)
+                // Label above, text from the left: beside its label a form field is right-aligned, where a typed space can't be seen.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(language("What you do"))
+                    TextField("", text: $about, prompt: Text(language("I do marketing for clients, so Instagram is usually work.")), axis: .vertical)
+                        .labelsHidden()
+                        .lineLimit(3...6)
+                        .multilineTextAlignment(.leading)
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(language("Kinds of task"))
                     KindPicker(picked: $picked, suggestions: TaskKind.suggestions.map {

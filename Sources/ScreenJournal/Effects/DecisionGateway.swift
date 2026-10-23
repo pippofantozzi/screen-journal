@@ -9,9 +9,9 @@ struct DecisionGateway: Sendable {
     static let model = "baseten/mammoth-1"
     /// Mammoth reads text only. Jev sees the screenshot too; pinned, since its image support is experimental and changes between versions.
     static let lookModel = "typesafe-ai/jev-1.14.0"
-    /// Zero data retention needs the key's Vercel team on Pro; on Hobby the gateway refuses every request with 403.
-    /// Prompt training is refused on every plan.
-    static let zeroRetention = false
+    /// Every request goes only to providers that keep nothing, and none that train on prompts.
+    /// Needs the key's Vercel team on Pro: on Hobby the gateway refuses every request with 403.
+    static let zeroRetention = true
     static let keyName = "AI_GATEWAY_API_KEY"
 
     private let key: String
