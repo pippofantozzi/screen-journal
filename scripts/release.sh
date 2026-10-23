@@ -38,8 +38,10 @@ ITEM="    <item>
 # Newest item goes first, right after the marker line.
 ITEM="$ITEM" perl -0pi -e 's/(<!-- items -->\n)/$1$ENV{ITEM}\n/' docs/appcast.xml
 
+# The tag goes up first, or `gh release create` tags whatever the remote's main is.
+git push origin HEAD "v$VERSION"
 gh release create "v$VERSION" "$ZIP" --repo "$REPO" --title "Screen Journal $VERSION" --notes "$NOTES"
 git add docs/appcast.xml
 git commit -m "Release $VERSION"
-git push origin HEAD "v$VERSION"
+git push origin HEAD
 echo "Released $VERSION. Appcast: $FEED_URL"
