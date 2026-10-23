@@ -6,10 +6,16 @@ public enum Launch: Equatable, Sendable {
     /// `root` replaces ~/ScreenJournal; for tests against a copy, and then the app is left alone.
     case command(JournalCommand, root: String?)
     case invalid(String)
+    /// Usage text, for `--help`.
+    case help(String)
 
     public static func parse(_ arguments: [String], timeZone: TimeZone) -> Launch {
         let words = withoutSystemFlags(Array(arguments.dropFirst()))
-        guard let name = words.first(where: JournalCommand.names.contains) else { return .app }
+        guard let name = words.first(where: JournalCommand.names.contains) else {
+            if words.isEmpty { return .app }
+            if words.contains(where: ["--help", "-h", "help"].contains) { return .help(JournalCommand.usage) }
+            return .invalid("Unknown command: \(words.joined(separator: " "))\n\n\(JournalCommand.usage)")
+        }
         var options = Options(words.filter { $0 != name })
         let root = options.take("--root")
         let command = JournalCommand.parse(name, &options, timeZone: timeZone)
@@ -38,25 +44,29 @@ public enum JournalCommand: Equatable, Sendable {
     case forget(Forget.Target, apply: Bool)
     case tidy(keepDays: Int, apply: Bool)
     case rebuild
+    /// Asks the decision model about sessions not yet answered under the current `labels.json`; `day` nil means every day.
+    case label(day: String?, titlesOnly: Bool, apply: Bool)
 
     public struct Usage: Error, Equatable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label"]
 
     static let usage = """
     Usage:
       ScreenJournal forget --from 2026-10-21T18:57 --to 2026-10-21T19:00 [--apply]
-      ScreenJournal forget --term WhatsApp [--term …] [--apply]
+      ScreenJournal forget --term <word> [--term …] [--apply]
       ScreenJournal tidy --keep-days 7 [--apply]
       ScreenJournal rebuild
+      ScreenJournal label [--day 2026-10-21] [--titles-only] [--apply]
     """
 
     fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
         switch name {
         case "forget": forget(&options, timeZone: timeZone)
         case "tidy": tidy(&options)
+        case "label": label(&options)
         default: .success(.rebuild)
         }
     }
@@ -84,6 +94,15 @@ public enum JournalCommand: Equatable, Sendable {
             return fail("tidy needs --keep-days with a whole number of days, 0 or more.")
         }
         return .success(.tidy(keepDays: days, apply: apply))
+    }
+
+    private static func label(_ options: inout Options) -> Result<JournalCommand, Usage> {
+        let apply = options.flag("--apply"), titlesOnly = options.flag("--titles-only")
+        let day = options.take("--day")
+        if let day, day.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression) == nil {
+            return fail("--day looks like 2026-10-21.")
+        }
+        return .success(.label(day: day, titlesOnly: titlesOnly, apply: apply))
     }
 
     private static func localDate(_ text: String, _ timeZone: TimeZone) -> Date? {

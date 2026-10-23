@@ -60,7 +60,7 @@ public enum DaySummary {
             "",
         ]
         if !d.notes.isEmpty {
-            lines += ["## Notes she left", ""]
+            lines += ["## Notes", ""]
             lines += d.notes.map { "- \(Format.time($0.at, timeZone)) — \($0.text ?? "")" }
             lines.append("")
         }

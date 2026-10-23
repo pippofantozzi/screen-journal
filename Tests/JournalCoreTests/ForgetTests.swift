@@ -183,15 +183,45 @@ struct TidyTests {
 
     let note = EventRecord(at: base + 15, kind: .note, frameID: "b", text: "look")
 
+    let onDisk = ["frames/a.heic", "frames/b.heic", "frames/c.heic", "frames/x.heic", "frames/d.heic", "frames/stray.heic"]
+
+    func slim(_ plan: Tidy.Plan) -> (delete: [String], frames: [FrameRecord])? {
+        guard case let .slim(delete, frames) = plan else { Issue.record("expected slim, got \(plan)"); return nil }
+        return (delete, frames)
+    }
+
     @Test func keepsVisitStartsRepresentativesAndNotedFrames() {
-        let onDisk = ["frames/a.heic", "frames/b.heic", "frames/c.heic", "frames/x.heic", "frames/d.heic", "frames/stray.heic"]
-        let plan = Tidy.plan(frames: frames, sessions: sessions, notes: [note], imagesOnDisk: onDisk)
-        #expect(plan == .delete(["frames/stray.heic", "frames/x.heic"]))
+        let plan = slim(Tidy.plan(frames: frames, sessions: sessions, notes: [note], imagesOnDisk: onDisk))
+        #expect(plan?.delete == ["frames/stray.heic", "frames/x.heic"])
+    }
+
+    @Test func repointsRowsAtTheLatestKeptImageEarlierInTheirVisit() {
+        let plan = slim(Tidy.plan(frames: frames, sessions: sessions, notes: [note], imagesOnDisk: onDisk))
+        #expect(plan?.frames.map(\.image) == ["frames/a.heic", "frames/b.heic", "frames/c.heic", "frames/c.heic", "frames/d.heic"])
+        #expect(plan?.frames.map(\.id) == frames.map(\.id))
+    }
+
+    @Test func noRowReferencesADeletedImage() {
+        let shared = [
+            row("a", at: 0, text: "start"),
+            row("b", at: 10, newLines: ["more"]),
+            row("c", at: 20, image: "frames/b.heic", newLines: ["still b"]),
+            row("d", at: 30, display: 2, text: "other display"),
+            row("e", at: 40, display: 2, newLines: ["more"]),
+        ]
+        let sessions = [Session(start: base, end: base + 30, app: "Chrome", bundleID: "id.Chrome", windowTitle: "Tab",
+                                frames: 3, representativeFrame: "frames/a.heic")]
+        let disk = ["frames/a.heic", "frames/b.heic", "frames/d.heic", "frames/e.heic"]
+        guard let plan = slim(Tidy.plan(frames: shared, sessions: sessions, notes: [], imagesOnDisk: disk)) else { return }
+        #expect(plan.delete == ["frames/b.heic", "frames/e.heic"])
+        #expect(plan.frames.allSatisfy { !plan.delete.contains($0.image) })
+        #expect(plan.frames.map(\.image) == ["frames/a.heic", "frames/a.heic", "frames/a.heic", "frames/d.heic", "frames/d.heic"])
     }
 
     @Test func ignoresImagesNotOnDisk() {
-        let plan = Tidy.plan(frames: frames, sessions: sessions, notes: [note], imagesOnDisk: ["frames/x.heic"])
-        #expect(plan == .delete(["frames/x.heic"]))
+        let plan = slim(Tidy.plan(frames: frames, sessions: sessions, notes: [note], imagesOnDisk: ["frames/x.heic"]))
+        #expect(plan?.delete == ["frames/x.heic"])
+        #expect(plan?.frames == frames.map { $0.id == "x" ? $0.pointing(at: "frames/c.heic") : $0 })
     }
 
     @Test func refusesWithoutSessions() {
@@ -205,6 +235,6 @@ struct TidyTests {
     }
 
     @Test func nothingOnDiskIsNothingToDo() {
-        #expect(Tidy.plan(frames: [], sessions: [], notes: [], imagesOnDisk: []) == .delete([]))
+        #expect(Tidy.plan(frames: [], sessions: [], notes: [], imagesOnDisk: []) == .slim(delete: [], frames: []))
     }
 }

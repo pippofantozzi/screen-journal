@@ -20,7 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminationSignal: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if RunningApp.anotherIsRunning {
+            NSApp.terminate(nil)
+            return
+        }
         quitGracefullyOnSIGTERM()
+        windows.startNoteShortcut()
         if model.isOnboarded {
             model.start()
         } else {
@@ -47,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class WindowPresenter {
     private let model: AppModel
     private var windows: [String: NSWindow] = [:]
+    private var noteShortcut: GlobalHotKey?
 
     init(model: AppModel) {
         self.model = model
@@ -57,11 +63,7 @@ final class WindowPresenter {
         show("onboarding", title: "Welcome", size: CGSize(width: 520, height: 480), chromeless: true) {
             OnboardingView(
                 model: self.model,
-                onFinish: { [weak self] in self?.close("onboarding") },
-                onTour: { [weak self] in
-                    self?.close("onboarding")
-                    self?.showGuide()
-                }
+                onFinish: { [weak self] in self?.close("onboarding") }
             )
         }
     }
@@ -73,19 +75,45 @@ final class WindowPresenter {
     }
 
     func showSettings() {
-        show("settings", title: "Screen Journal Settings", size: CGSize(width: 460, height: 420)) {
-            SettingsView(model: self.model)
+        show("settings", title: "Screen Journal Settings", size: CGSize(width: 460, height: 590)) {
+            SettingsView(model: self.model, noteShortcutWorks: self.noteShortcutWorks)
         }
     }
 
+    /// Stays off when another app already holds the combination; the menu item still works.
+    func startNoteShortcut() {
+        let key = GlobalHotKey.note
+        noteShortcut = GlobalHotKey(keyCode: key.keyCode, modifiers: key.modifiers) { [weak self] in self?.showNote() }
+    }
+
+    var noteShortcutWorks: Bool { noteShortcut != nil }
+
+    /// A floating panel that takes typing without activating the app: her app stays in front,
+    /// so the note is about what she was doing and the journal sees no app switch.
     func showNote() {
+        if let existing = windows["note"] {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
         let moment = model.currentMoment()
-        show("note", title: "Note this moment", size: CGSize(width: 420, height: 170)) {
-            NoteView { [weak self] text in
+        let panel = NotePanel(
+            contentRect: CGRect(origin: .zero, size: CGSize(width: 420, height: 170)),
+            styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false
+        )
+        panel.title = "Note this moment"
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.contentView = NSHostingView(rootView: NoteView(
+            onSave: { [weak self] text in
                 self?.model.addNote(text, about: moment)
                 self?.close("note")
-            }
-        }
+            },
+            onCancel: { [weak self] in self?.close("note") }
+        ))
+        panel.center()
+        track(panel, as: "note")
+        panel.makeKeyAndOrderFront(nil)
     }
 
     private func show<Content: View>(_ id: String, title: String, size: CGSize, chromeless: Bool = false, content: () -> Content) {
@@ -102,18 +130,27 @@ final class WindowPresenter {
         window.title = title
         window.titlebarAppearsTransparent = chromeless
         window.titleVisibility = chromeless ? .hidden : .visible
-        window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: content())
         window.center()
+        track(window, as: id)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
+    private func track(_ window: NSWindow, as id: String) {
+        window.isReleasedWhenClosed = false
         windows[id] = window
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { _ = self?.windows.removeValue(forKey: id) }
         }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
     }
 
     private func close(_ id: String) {
         windows[id]?.close()
     }
+}
+
+/// Panels only become key for text fields when asked to; this one always may.
+private final class NotePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }

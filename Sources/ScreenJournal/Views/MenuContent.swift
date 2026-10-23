@@ -39,23 +39,25 @@ struct MenuContent: View {
         } else {
             Button("Resume") { model.resume() }
         }
+        // Shows ⌥Space beside the item, so the menu teaches the shortcut that works everywhere.
         Button("Note This Moment…") { windows.showNote() }
-            .keyboardShortcut("n")
-
-        Divider()
-
-        Button("How Screen Journal Works…") { windows.showGuide() }
-        Button("Open Journal Folder") { model.openFolder() }
+            .keyboardShortcut(.space, modifiers: .option)
         Button("Settings…") { windows.showSettings() }
             .keyboardShortcut(",")
-        if model.updater.isAvailable {
-            Button("Check for Updates…") { model.updater.checkForUpdates() }
-        }
 
         Divider()
 
-        Button("Quit Screen Journal") { NSApp.terminate(nil) }
-            .keyboardShortcut("q")
+        // Everything she rarely needs, one quiet submenu at the bottom.
+        Menu("Advanced") {
+            Button("How Screen Journal Works…") { windows.showGuide() }
+            Button("Open Journal Folder") { model.openFolder() }
+            if model.updater.isAvailable {
+                Button("Check for Updates…") { model.updater.checkForUpdates() }
+            }
+            Divider()
+            Button("Quit Screen Journal") { NSApp.terminate(nil) }
+                .keyboardShortcut("q")
+        }
     }
 
     private var headline: String {

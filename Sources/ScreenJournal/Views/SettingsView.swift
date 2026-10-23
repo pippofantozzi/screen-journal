@@ -1,113 +1,145 @@
 import JournalCore
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SettingsView: View {
     let model: AppModel
+    let noteShortcutWorks: Bool
     @AppStorage(Preferences.interval) private var interval = 10.0
     @AppStorage(Preferences.retentionDays) private var retentionDays = 30
-    @State private var excluded = UserDefaults.standard.stringArray(forKey: Preferences.excludedApps) ?? []
-    @State private var choosingApp = false
-    @State private var advice: IntervalAdvice?
+    @State private var about = ""
+    @State private var tasks: [String] = []
+    @State private var look = false
+    @State private var keySaved = GatewayKey.isSaved
+    @State private var newKey = ""
+    @State private var keyStatus: KeyStatus = .idle
+    /// Closed by default: the key is set up once, usually for her.
+    @State private var showAdvanced = false
+
+    enum KeyStatus: Equatable {
+        case idle, checking, works
+        case failed(String)
+    }
 
     var body: some View {
         Form {
-            Section("Capture") {
+            Section {
                 Picker("Every", selection: $interval) {
                     ForEach(Preferences.intervalOptions, id: \.self) { Text("\(Int($0)) seconds").tag($0) }
                 }
-                if let advice {
-                    IntervalAdviceRow(advice: advice) { interval = $0 }
-                }
                 Stepper("Keep the last \(retentionDays) days", value: $retentionDays, in: 3...180, step: 1)
+            } header: {
+                Text("Capture")
+            } footer: {
+                Text(noteShortcutWorks
+                    ? "Press \(GlobalHotKey.note.label) in any app to note what's going on."
+                    : "Another app uses \(GlobalHotKey.note.label); note moments from the menu instead.")
             }
 
             Section {
-                ForEach(excluded.filter(isInstalled), id: \.self) { id in
-                    HStack {
-                        Text(appName(id))
-                        Spacer()
-                        Button(role: .destructive) { save(excluded.filter { $0 != id }) } label: {
-                            Image(systemName: "minus.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                    }
+                TextField("What you do", text: $about, prompt: Text("I do marketing for clients, so Instagram is usually work."), axis: .vertical)
+                    .lineLimit(3...6)
+                LabeledContent("Your own kinds of task") {
+                    TagField(tags: $tasks, prompt: "Reels, then Return")
                 }
-                Button("Add App…") { choosingApp = true }
             } header: {
-                Text("Never capture")
+                Text("Your work")
             } footer: {
-                Text("These apps are blanked out of screenshots, and nothing is saved while one is in front.")
+                Text("Helps tell your work from the rest, and sort it. Click a kind to edit it.")
             }
 
-            Section("Journal") {
-                LabeledContent("Folder", value: model.store.root.path(percentEncoded: false))
-                Button("Open in Finder") { model.openFolder() }
+            Section {
+                DisclosureGroup(isExpanded: $showAdvanced) {
+                    keyRow
+                    if !keySaved, case .failed(let message) = keyStatus { Text(message).foregroundStyle(.red) }
+                    Toggle("Show screenshots when a window has little text", isOn: $look)
+                    Text("Claude uses the key to sort your sessions, without ever seeing it; it stays in this Mac's Keychain. "
+                        + "Screenshots help with design tools, photos and video, but they're sent as they are: nothing on them can be hidden.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } label: {
+                    // The whole row opens it, not just the chevron.
+                    Text("Advanced")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { withAnimation { showAdvanced.toggle() } }
+                }
             }
         }
         .formStyle(.grouped)
-        .onChange(of: interval) { model.intervalDidChange() }
-        .task(id: interval) { advice = await model.intervalAdvice() }
-        .fileImporter(isPresented: $choosingApp, allowedContentTypes: [.application]) { result in
-            if let id = (try? result.get()).flatMap({ Bundle(url: $0)?.bundleIdentifier }), !excluded.contains(id) {
-                save(excluded + [id])
+        .onAppear(perform: load)
+        .onChange(of: about) { save() }
+        .onChange(of: tasks) { save() }
+        .onChange(of: look) { save() }
+    }
+
+    private var keyRow: some View {
+        LabeledContent("AI Gateway key") {
+            if keySaved {
+                HStack {
+                    keyStatusText
+                    Button("Check", action: check).disabled(keyStatus == .checking)
+                    Button("Remove", action: removeKey)
+                }
+            } else {
+                HStack {
+                    SecureField("", text: $newKey, prompt: Text("vck_…"))
+                        .labelsHidden()
+                        .frame(width: 200)
+                        .onSubmit(saveKey)
+                    Button("Save", action: saveKey).disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
         }
     }
 
-    private func save(_ ids: [String]) {
-        excluded = ids
-        UserDefaults.standard.set(ids, forKey: Preferences.excludedApps)
+    @ViewBuilder private var keyStatusText: some View {
+        switch keyStatus {
+        case .idle: Text("Saved").foregroundStyle(.secondary)
+        case .checking: ProgressView().controlSize(.small)
+        case .works: Text("Works").foregroundStyle(.green)
+        case .failed(let message): Text(message).foregroundStyle(.red).lineLimit(2).help(message)
+        }
     }
 
-    private func isInstalled(_ bundleID: String) -> Bool {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
+    private func saveKey() {
+        let key = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        newKey = ""
+        switch GatewayKey.save(key) {
+        case .success:
+            keySaved = true
+            check()
+        case .failure(let error):
+            keyStatus = .failed(error.message)
+        }
     }
 
-    private func appName(_ bundleID: String) -> String {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-            .map { FileManager.default.displayName(atPath: $0.path) } ?? bundleID
+    private func removeKey() {
+        GatewayKey.remove()
+        keySaved = false
+        keyStatus = .idle
     }
-}
 
-/// One quiet line under the interval picker: still learning, all good, or a gentler interval worth trying.
-private struct IntervalAdviceRow: View {
-    let advice: IntervalAdvice
-    let use: (TimeInterval) -> Void
-
-    var body: some View {
-        switch advice {
-        case .learning(let have, let need):
-            Text("Learning your rhythm · suggestion after ~\(duration(need)) of use (\(duration(have)) so far)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .keep(let interval):
-            Text("✓ Every \(Int(interval)) seconds suits how you work")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .suggest(let interval, let visits, let text, let savedWork):
-            HStack {
-                Text("Every \(Int(interval)) seconds would still catch \(percent(min(visits, text))) of what you do, with \(percent(savedWork)) less work")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Use \(Int(interval)) seconds") { use(interval) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+    /// One tiny request about a made-up window, so a wrong key shows here rather than in tomorrow's run.
+    private func check() {
+        guard let key = GatewayKey.read() else { return removeKey() }
+        keyStatus = .checking
+        Task {
+            switch await DecisionGateway(key: key).check() {
+            case .success: keyStatus = .works
+            case .failure(let error): keyStatus = .failed(error.message.hasPrefix("401") || error.message.hasPrefix("403") ? "The gateway refused this key." : error.message)
             }
         }
     }
 
-    private func duration(_ seconds: TimeInterval) -> String {
-        let f = DateComponentsFormatter()
-        f.allowedUnits = seconds >= 3600 ? [.hour, .minute] : [.minute]
-        f.unitsStyle = .abbreviated
-        f.zeroFormattingBehavior = .dropAll
-        return f.string(from: seconds) ?? ""
+    private func load() {
+        guard case .success(let setup) = model.store.labelSetup() else { return }
+        about = setup.about
+        tasks = setup.tasks
+        look = setup.look
     }
 
-    private func percent(_ fraction: Double) -> String {
-        "\(Int((fraction * 100).rounded(.down)))%"
+    private func save() {
+        try? model.store.save(LabelSetup(about: about.trimmingCharacters(in: .whitespacesAndNewlines), tasks: tasks, look: look))
     }
 }

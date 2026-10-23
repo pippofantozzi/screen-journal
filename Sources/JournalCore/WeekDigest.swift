@@ -8,12 +8,13 @@ public enum WeekDigest {
         let seconds: TimeInterval
     }
 
-    public static func markdown(_ days: [DayDigest], timeZone: TimeZone, limit: Int = 15) -> String {
-        let days = days.sorted { $0.day < $1.day }
-        guard let first = days.first, let last = days.last else { return "" }
+    /// The seven days ending on `today` (inclusive); `days` may hold any digests, older ones are left out.
+    public static func markdown(_ days: [DayDigest], endingOn today: String, timeZone: TimeZone, limit: Int = 15) -> String {
+        let first = DayName.adding(-6, to: today) ?? today
+        let days = days.filter { first <= $0.day && $0.day <= today }.sorted { $0.day < $1.day }
         let active = days.reduce(0) { $0 + $1.activeSeconds }
         var lines = [
-            "# Week of \(first.day) – \(last.day)",
+            "# Week of \(first) – \(today)",
             "",
             "Active: \(Format.clock(active)) across \(days.count) \(days.count == 1 ? "day" : "days").",
             "",

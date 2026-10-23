@@ -35,4 +35,12 @@ struct JournalGuideTests {
         #expect(JournalGuide.files.allSatisfy { JournalGuide.isCurrent($0.contents) })
         #expect(!JournalGuide.isCurrent("<!-- screen-journal-guide v1 -->"))
     }
+
+    /// An older copy of the app, launched by mistake, must not put its older guide back.
+    @Test func neverReplacesANewerGuide() {
+        #expect(!JournalGuide.shouldReplace("<!-- screen-journal-guide v\(JournalGuide.version + 1) -->"))
+        #expect(!JournalGuide.shouldReplace(JournalGuide.marker))
+        #expect(JournalGuide.shouldReplace("<!-- screen-journal-guide v1 -->"))
+        #expect(JournalGuide.shouldReplace("# hand-written, no marker"))
+    }
 }

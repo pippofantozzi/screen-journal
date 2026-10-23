@@ -8,6 +8,8 @@ final class Recorder {
     /// What was last recorded on one display, so the next record only adds what's new.
     struct DisplayMemory {
         var signature: FrameSignature
+        /// The title the visit is filed under: a chat app's window title plus the open chat's name.
+        var title: String?
         /// Lines already on record during this visit to the window.
         var seen: Set<String>
         var day: String
@@ -87,7 +89,8 @@ final class Recorder {
                     open[shot.index]?.end = now
                 case .record(let saveImage):
                     let freshImage = { policy.needsFreshImage(decided: saveImage, newLineCount: $0) }
-                    try await record(shot, top: top, focused: focused, signature: signature, freshImage: freshImage, at: now)
+                    let pid = focused && top?.bundleID == frontmostAfter?.bundleIdentifier ? frontmostAfter?.processIdentifier : nil
+                    try await record(shot, top: top, focused: focused, pid: pid, signature: signature, freshImage: freshImage, at: now)
                     kept += 1
                 }
             }
@@ -111,19 +114,21 @@ final class Recorder {
     }
 
     private func record(
-        _ shot: DisplayShot, top: WindowInfo?, focused: Bool, signature: FrameSignature,
+        _ shot: DisplayShot, top: WindowInfo?, focused: Bool, pid: pid_t?, signature: FrameSignature,
         freshImage: (_ newLineCount: Int) -> Bool, at now: Date
     ) async throws {
         close(display: shot.index, at: now)
         let id = DayStamp(now, in: store.timeZone).frameID(display: shot.index)
         let previous = memory[shot.index]
 
-        let ocr = await TextRecognizer.text(in: shot.image)
+        let lines = await TextRecognizer.lines(in: shot.image)
+        let ocr = Secrets.redact(lines.map(\.text).joined(separator: "\n"))
+        let title = ChatHeader.title(top?.title, lines: lines)
+        let place = await Task.detached { pid.flatMap(WindowContext.place(of:)) }.value
         let day = store.day(of: now)
         // Same window, same day, and something already on record: continue the visit.
         let visit = previous.flatMap {
-            !$0.seen.isEmpty && $0.day == day
-                && $0.signature.bundleID == signature.bundleID && $0.signature.windowTitle == signature.windowTitle ? $0 : nil
+            !$0.seen.isEmpty && $0.day == day && $0.signature.bundleID == signature.bundleID && $0.title == title ? $0 : nil
         }
         let newLines = visit.map { TextDelta.newLines(ocr, seen: $0.seen) } ?? []
         let seen = visit.map { $0.seen.union(newLines) } ?? TextDelta.lineSet(ocr)
@@ -132,10 +137,10 @@ final class Recorder {
         let shared = previous.flatMap { !freshImage(newLines.count) && store.day(of: $0.imageAt) == day ? $0 : nil }
         let image = try shared?.image ?? store.writeImage(shot.image, id: id, at: now)
 
-        memory[shot.index] = DisplayMemory(signature: signature, seen: seen, day: day, image: image, imageAt: shared?.imageAt ?? now)
+        memory[shot.index] = DisplayMemory(signature: signature, title: title, seen: seen, day: day, image: image, imageAt: shared?.imageAt ?? now)
         open[shot.index] = FrameRecord(
             id: id, start: now, end: now, display: shot.index, focused: focused,
-            app: top?.app, bundleID: top?.bundleID, windowTitle: top?.title, image: image,
+            app: top?.app, bundleID: top?.bundleID, windowTitle: title, place: place, image: image,
             text: visit == nil && !ocr.isEmpty ? ocr : nil, newLines: newLines.isEmpty ? nil : newLines
         )
     }

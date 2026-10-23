@@ -11,6 +11,8 @@ public struct FrameRecord: Codable, Equatable, Sendable {
     public let app: String?
     public let bundleID: String?
     public let windowTitle: String?
+    /// The folder or file the focused window shows, or its page address; focused display only, when Accessibility allows.
+    public let place: String?
     /// Latest saved image for this display, relative to the day folder. Consecutive records may share it.
     public let image: String
     /// Full on-device OCR, only on the first record of a window on this display.
@@ -19,7 +21,7 @@ public struct FrameRecord: Codable, Equatable, Sendable {
     public let newLines: [String]?
 
     public init(id: String, start: Date, end: Date, display: Int, focused: Bool, app: String?, bundleID: String?,
-                windowTitle: String?, image: String, text: String?, newLines: [String]?) {
+                windowTitle: String?, place: String? = nil, image: String, text: String?, newLines: [String]?) {
         self.id = id
         self.start = start
         self.end = end
@@ -28,12 +30,19 @@ public struct FrameRecord: Codable, Equatable, Sendable {
         self.app = app
         self.bundleID = bundleID
         self.windowTitle = windowTitle
+        self.place = place
         self.image = image
         self.text = text
         self.newLines = newLines
     }
 
     public var duration: TimeInterval { end.timeIntervalSince(start) }
+
+    /// The same row showing a different image.
+    func pointing(at image: String) -> FrameRecord {
+        FrameRecord(id: id, start: start, end: end, display: display, focused: focused, app: app, bundleID: bundleID,
+                    windowTitle: windowTitle, place: place, image: image, text: text, newLines: newLines)
+    }
 }
 
 public struct EventRecord: Codable, Equatable, Sendable {

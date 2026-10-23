@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Four calm steps: what this is, screen access, open at login, ready.
+/// Four calm steps: what this is, screen access, chats and folders, ready. Open at login is turned on at the end.
 /// The step is persisted so a relaunch (needed after granting access) lands back where she was.
 struct OnboardingView: View {
     enum Step: Int, CaseIterable {
-        case welcome, screenAccess, openAtLogin, ready
+        case welcome, screenAccess, context, ready
 
         var symbol: String {
             switch self {
             case .welcome: "sparkles"
             case .screenAccess: "rectangle.dashed.badge.record"
-            case .openAtLogin: "power"
+            case .context: "person.2.wave.2"
             case .ready: "checkmark"
             }
         }
@@ -19,7 +19,7 @@ struct OnboardingView: View {
             switch self {
             case .welcome: .purple
             case .screenAccess: .blue
-            case .openAtLogin: .teal
+            case .context: .indigo
             case .ready: .green
             }
         }
@@ -29,7 +29,6 @@ struct OnboardingView: View {
 
     let model: AppModel
     let onFinish: () -> Void
-    let onTour: () -> Void
 
     @AppStorage(OnboardingView.stepKey) private var stepRaw = Step.welcome.rawValue
 
@@ -50,22 +49,14 @@ struct OnboardingView: View {
                 action: ("Get Started", { advance(to: .screenAccess) })
             )
         case .screenAccess:
-            ScreenAccessStep { advance(to: .openAtLogin) }
-        case .openAtLogin:
-            OpenAtLoginStep { advance(to: .ready) }
+            ScreenAccessStep { advance(to: .context) }
+        case .context:
+            ContextStep { advance(to: .ready) }
         case .ready:
-            StepCard(
-                title: "You're all set",
-                message: "Look for the little aperture in your menu bar. Pause any time, or use Note This Moment when something feels tedious. If you ever wonder how something works, open How Screen Journal Works from that menu.",
-                action: ("Start Journaling", {
-                    model.markOnboarded()
-                    onFinish()
-                }),
-                secondary: ("Show Me Around First", {
-                    model.markOnboarded()
-                    onTour()
-                })
-            )
+            ReadyStep {
+                model.markOnboarded()
+                onFinish()
+            }
         }
     }
 
@@ -78,7 +69,6 @@ private struct StepCard: View {
     let title: String
     let message: String
     let action: (label: String, run: () -> Void)
-    var secondary: (label: String, run: () -> Void)?
 
     var body: some View {
         VStack(spacing: 14) {
@@ -93,9 +83,6 @@ private struct StepCard: View {
                 .controlSize(.large)
                 .padding(.top, 10)
                 .keyboardShortcut(.defaultAction)
-            if let secondary {
-                Button(secondary.label, action: secondary.run).buttonStyle(.link)
-            }
         }
     }
 }
@@ -144,37 +131,53 @@ private struct ScreenAccessStep: View {
     }
 }
 
-private struct OpenAtLoginStep: View {
+/// Optional: the journal works without it, it just can't tell chats or folders apart.
+private struct ContextStep: View {
     let onDone: () -> Void
-    @State private var enabled = false
-    @State private var failure: String?
+    @State private var granted = WindowContext.isTrusted
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("Always there when you log in").font(.title2.weight(.semibold))
-            Text("Screen Journal starts by itself after a restart, so the week doesn't have holes. You can still pause it from the menu bar whenever you like.")
+            Text("Know which chat and which page").font(.title2.weight(.semibold))
+            Text("Turn on Screen Journal under **Accessibility**, so the journal also notes which chat, website or folder is open.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            if enabled {
-                GrantedBadge(text: "Opens at login")
-            } else if let failure {
-                Text(failure).font(.callout).foregroundStyle(.orange)
-                Button("Continue Anyway", action: onDone).controlSize(.large)
+            if granted {
+                GrantedBadge(text: "Turned on")
             } else {
-                ProgressView().controlSize(.small)
+                Button("Open System Settings") { WindowContext.requestTrust() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.top, 10)
+                Button("Skip for Now", action: onDone).buttonStyle(.link)
             }
         }
         .task {
-            try? await Task.sleep(for: .milliseconds(600))
-            do {
-                try SystemAccess.enableOpenAtLogin()
-                withAnimation(.spring(duration: 0.5, bounce: 0.4)) { enabled = true }
-                try? await Task.sleep(for: .seconds(1.2))
-                onDone()
-            } catch {
-                failure = "macOS didn't let us add the login item. Move the app to Applications and try again."
+            while !Task.isCancelled && !granted {
+                try? await Task.sleep(for: .seconds(1))
+                withAnimation(.spring(duration: 0.5, bounce: 0.4)) { granted = WindowContext.isTrusted }
             }
+            try? await Task.sleep(for: .seconds(1))
+            onDone()
+        }
+    }
+}
+
+/// Turns on open at login by itself, so the two weeks have no holes; says so only when macOS refuses.
+private struct ReadyStep: View {
+    let onStart: () -> Void
+    @State private var loginFailed = false
+
+    var body: some View {
+        StepCard(
+            title: "You're all set",
+            message: "Look for the little aperture in your menu bar. Press ⌥Space in any app to jot down what's going on, especially when something feels tedious. It starts by itself when you log in; pause it from the menu any time."
+                + (loginFailed ? "\n\nmacOS didn't let it open at login: move the app to Applications and open it again." : ""),
+            action: ("Start Journaling", onStart)
+        )
+        .task {
+            do { try SystemAccess.enableOpenAtLogin() } catch { loginFailed = true }
         }
     }
 }

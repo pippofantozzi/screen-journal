@@ -19,10 +19,20 @@ public struct DayStamp: Equatable, Sendable {
 public enum RetentionPolicy {
     /// Day folders older than the last `keep` days (today included).
     public static func expiredDays(_ names: [String], today: String, keep: Int) -> [String] {
-        guard let todayDate = parse(today),
-              let cutoff = utc.date(byAdding: .day, value: -(keep - 1), to: todayDate) else { return [] }
-        return names.filter { name in parse(name).map { $0 < cutoff } ?? false }.sorted()
+        guard let cutoff = DayName.adding(-(keep - 1), to: today) else { return [] }
+        return names.filter { DayName.isValid($0) && $0 < cutoff }.sorted()
     }
+}
+
+/// Calendar math on `YYYY-MM-DD` folder names, which sort like the days they name.
+enum DayName {
+    static func adding(_ days: Int, to day: String) -> String? {
+        guard let date = parse(day), let moved = utc.date(byAdding: .day, value: days, to: date) else { return nil }
+        let c = utc.dateComponents([.year, .month, .day], from: moved)
+        return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+    }
+
+    static func isValid(_ day: String) -> Bool { parse(day) != nil }
 
     private static let utc: Calendar = {
         var c = Calendar(identifier: .gregorian)

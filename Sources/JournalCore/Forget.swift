@@ -79,7 +79,7 @@ public enum Forget {
     }
 
     private static func mentions(_ frame: FrameRecord, _ terms: [String]) -> Bool {
-        mentions([frame.app, frame.windowTitle, frame.text] + (frame.newLines ?? []), terms)
+        mentions([frame.app, frame.windowTitle, frame.place, frame.text] + (frame.newLines ?? []), terms)
     }
 
     private static func mentions(_ fields: [String?], _ terms: [String]) -> Bool {

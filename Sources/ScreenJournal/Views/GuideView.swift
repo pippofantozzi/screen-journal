@@ -34,14 +34,13 @@ struct GuideView: View {
             Point(symbol: "play.fill", text: "Timed pauses resume by themselves. Otherwise choose Resume."),
         ]),
         Page(symbol: "square.and.pencil", tint: .pink, title: "Leave a note", points: [
-            Point(symbol: "lightbulb", text: "When something feels tedious or repetitive, choose Note This Moment."),
+            Point(symbol: "lightbulb", text: "When something feels tedious or repetitive, press ⌥Space in any app."),
             Point(symbol: "quote.bubble", text: "A few words is plenty: \"copying orders into the sheet again\"."),
             Point(symbol: "star", text: "Notes are the most useful clue Claude gets. Ten notes in a week beats none."),
         ]),
         Page(symbol: "eye.slash", tint: .indigo, title: "What's never saved", points: [
             Point(symbol: "key", text: "Password managers are blanked out, and nothing is saved while one is in front."),
             Point(symbol: "lock", text: "Nothing is saved while the screen is locked or you've been away for 2 minutes."),
-            Point(symbol: "gearshape", text: "Settings → Never capture lets you add any app, like your bank or messages."),
             Point(symbol: "trash", text: "Days older than 30 are deleted automatically. You can change that in Settings."),
         ]),
         Page(symbol: "wand.and.stars", tint: .teal, title: "After a week: ask Claude", points: [
@@ -51,8 +50,8 @@ struct GuideView: View {
         ], command: "cd ~/ScreenJournal && claude"),
         Page(symbol: "questionmark.circle", tint: .green, title: "If something seems off", points: [
             Point(symbol: "exclamationmark.triangle", text: "macOS sometimes asks again for screen permission. Just allow it."),
-            Point(symbol: "arrow.down.circle", text: "Updates install by themselves. Menu → Check for Updates if you're curious."),
-            Point(symbol: "folder", text: "Menu → Open Journal Folder shows everything that was saved."),
+            Point(symbol: "arrow.down.circle", text: "Updates install by themselves. Menu → Advanced → Check for Updates if you're curious."),
+            Point(symbol: "folder", text: "Menu → Advanced → Open Journal Folder shows everything that was saved."),
             Point(symbol: "heart", text: "Still stuck? Ask Filippo. 💌"),
         ]),
     ]

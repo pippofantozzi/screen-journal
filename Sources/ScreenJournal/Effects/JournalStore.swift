@@ -37,14 +37,26 @@ struct JournalStore {
         return relative
     }
 
-    /// Writes CLAUDE.md and the skill unless an up-to-date copy is already there.
+    /// Writes CLAUDE.md and the skill unless an up-to-date copy is already there,
+    /// and points `.claude/sj` at this binary so the guide's commands always run the copy that is recording.
     func installGuide() throws {
+        try linkCommand()
         for file in JournalGuide.files {
             let url = root.appending(path: file.path)
-            if let existing = try? String(contentsOf: url, encoding: .utf8), JournalGuide.isCurrent(existing) { continue }
+            if let existing = try? String(contentsOf: url, encoding: .utf8), !JournalGuide.shouldReplace(existing) { continue }
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try file.contents.write(to: url, atomically: true, encoding: .utf8)
         }
+    }
+
+    private func linkCommand() throws {
+        guard let binary = Bundle.main.executablePath else { return }
+        let link = root.appending(path: JournalGuide.commandPath)
+        let fm = FileManager.default
+        try fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if (try? fm.destinationOfSymbolicLink(atPath: link.path)) == binary { return }
+        try? fm.removeItem(at: link)
+        try fm.createSymbolicLink(atPath: link.path, withDestinationPath: binary)
     }
 
     func rows(day: String) throws -> DayRows {
@@ -54,6 +66,38 @@ struct JournalStore {
             events: try JournalCoding.decodeLines(EventRecord.self, from: read(dir.appending(path: "events.jsonl"))),
             sessions: try JournalCoding.decodeLines(Session.self, from: read(dir.appending(path: "sessions.jsonl")))
         )
+    }
+
+    var labelSetupURL: URL { root.appending(path: "labels.json") }
+
+    /// What she wrote in Settings, or nothing yet.
+    func labelSetup() -> Result<LabelSetup, LabelError> {
+        guard let text = try? String(contentsOf: labelSetupURL, encoding: .utf8) else { return .success(LabelSetup()) }
+        return LabelSetup.parse(text)
+    }
+
+    func save(_ setup: LabelSetup) throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try setup.file().write(to: labelSetupURL, atomically: true, encoding: .utf8)
+    }
+
+    func labels(day: String) throws -> [Label] {
+        try JournalCoding.decodeLines(Label.self, from: read(dayDir(day).appending(path: "labels.jsonl")))
+    }
+
+    /// The app never writes labels.jsonl, so the command line appends to it with the app running.
+    func append(_ labels: [Label], day: String) throws {
+        guard !labels.isEmpty else { return }
+        try appendLine(try labels.map { try JournalCoding.line($0, timeZone: timeZone) }.joined(separator: "\n"),
+                       to: dayDir(day).appending(path: "labels.jsonl"))
+    }
+
+    /// Drops answers about sessions that no longer exist, after a forget rebuilt the day.
+    func pruneLabels(day: String) throws {
+        let url = dayDir(day).appending(path: "labels.jsonl")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let kept = Labeling.kept(try labels(day: day), sessions: try rows(day: day).sessions)
+        try jsonl(kept).write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Replaces a day's rows; each file is written to a temporary file first, then moved into place.
@@ -120,15 +164,6 @@ struct JournalStore {
         }
     }
 
-    /// Focused frames that started at or after `since`, from at most the last 7 days.
-    func focusedFrames(since: Date, until now: Date) -> [FrameRecord] {
-        let first = day(of: max(since, now.addingTimeInterval(-6 * 86400)))
-        return dayNames().filter { $0 >= first && $0 <= day(of: now) }.flatMap { day in
-            let text = (try? read(dayDir(day).appending(path: "frames.jsonl"))) ?? ""
-            return ((try? JournalCoding.decodeLines(FrameRecord.self, from: text)) ?? []).filter { $0.focused && $0.start >= since }
-        }
-    }
-
     /// Frame rows written for one day.
     func frameCount(day: String) -> Int {
         guard let data = FileManager.default.contents(atPath: dayDir(day).appending(path: "frames.jsonl").path) else { return 0 }
@@ -156,7 +191,7 @@ struct JournalStore {
         let body = "# Screen Journal\n\nNewest first. Each day links to its summary.\n\n"
             + digests.map(DaySummary.indexLine).joined(separator: "\n") + "\n"
         try body.write(to: root.appending(path: "index.md"), atomically: true, encoding: .utf8)
-        try WeekDigest.markdown(Array(digests.prefix(7)), timeZone: timeZone)
+        try WeekDigest.markdown(digests, endingOn: day(of: Date()), timeZone: timeZone)
             .write(to: root.appending(path: "week.md"), atomically: true, encoding: .utf8)
     }
 

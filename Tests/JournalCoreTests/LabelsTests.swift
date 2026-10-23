@@ -1,0 +1,215 @@
+import Foundation
+import Testing
+@testable import JournalCore
+
+/// Assembled so the source holds no key-shaped literal for secret scanners to flag.
+private let fakeStripeKey = "sk_" + "live_abcdefghijklmnopqrstuvwxyz"
+
+private let setup = LabelSetup(about: "I do marketing for clients.", tasks: ["Reels"])
+
+private func session(at offset: TimeInterval, for duration: TimeInterval = 60, app: String = "Chrome", title: String = "Tab") -> Session {
+    Session(start: base + offset, end: base + offset + duration, app: app, bundleID: "id.\(app)",
+            windowTitle: title, frames: 1, representativeFrame: "frames/x.heic")
+}
+
+private func label(_ s: Session, work: Double = 1, automatable: Double = 0.5, task: String = "admin",
+                   def: String = setup.def, source: Label.Source = .model) -> Label {
+    Label(session: s.start, work: work, automatable: automatable, task: task, def: def, source: source)
+}
+
+struct LabelSetupTests {
+    @Test func herTasksFollowTheDefaultsOnceEach() {
+        let kinds = LabelSetup(tasks: ["Reels", " reels ", "design", ""]).kinds
+        #expect(kinds.map(\.name) == TaskKind.defaults.map(\.name) + ["reels"])
+        #expect(kinds.last == TaskKind(name: "reels", description: "reels"))
+    }
+
+    @Test func addingAKindTrimsItAndSkipsBlanksAndRepeats() {
+        #expect(LabelSetup.adding("  Newsletters ", to: ["Reels"]) == ["Reels", "Newsletters"])
+        #expect(LabelSetup.adding("reels", to: ["Reels"]) == ["Reels"])
+        #expect(LabelSetup.adding("  ", to: ["Reels"]) == ["Reels"])
+    }
+
+    @Test func editingWhatTheModelIsToldChangesTheDef() {
+        #expect(setup.def == LabelSetup(about: setup.about, tasks: ["reels"]).def)
+        #expect(setup.def != LabelSetup(about: "I code.", tasks: setup.tasks).def)
+        #expect(setup.def != LabelSetup(about: setup.about, tasks: ["Reels", "Newsletters"]).def)
+        #expect(setup.def.count == 8)
+    }
+
+    @Test func lookingIsOffUnlessTurnedOnAndAsksNothingNew() {
+        #expect(LabelSetup.parse(#"{"about": "", "tasks": []}"#) == .success(LabelSetup()))
+        #expect(LabelSetup(about: setup.about, tasks: setup.tasks, look: true).def == setup.def)
+    }
+
+    @Test func roundTripsThroughTheFile() throws {
+        #expect(LabelSetup.parse(try setup.file()) == .success(setup))
+        let looking = LabelSetup(about: setup.about, tasks: setup.tasks, look: true)
+        #expect(LabelSetup.parse(try looking.file()) == .success(looking))
+        guard case .failure(let error) = LabelSetup.parse("not json") else { Issue.record("accepted"); return }
+        #expect(error.message.contains("labels.json"))
+    }
+}
+
+struct PendingTests {
+    let a = session(at: 0), b = session(at: 100)
+
+    @Test func asksSessionsUnansweredUnderTheCurrentSetup() {
+        let labels = [label(a), label(b, def: "stale000")]
+        #expect(Labeling.pending(sessions: [a, b], labels: labels, def: setup.def) == [b])
+    }
+
+    @Test func aCorrectionCountsAsAnswered() {
+        #expect(Labeling.pending(sessions: [a], labels: [label(a, source: .agent)], def: setup.def).isEmpty)
+    }
+}
+
+struct CurrentLabelTests {
+    let a = session(at: 0)
+
+    @Test func latestAnswerWinsAndCorrectionsWinOverTheModel() {
+        let corrected = [label(a, work: 0, source: .agent), label(a, work: 0.9)]
+        #expect(Labeling.current(corrected, def: setup.def)[a.start]?.work == 0)
+        let asked = [label(a, task: "admin"), label(a, task: "design")]
+        #expect(Labeling.current(asked, def: setup.def)[a.start]?.task == "design")
+    }
+
+    @Test func anAnswerThatSawTheScreenshotBeatsTextOnlyButNotACorrection() {
+        #expect(Labeling.current([label(a, task: "design", source: .look), label(a, task: "admin")], def: setup.def)[a.start]?.task == "design")
+        #expect(Labeling.current([label(a, task: "admin", source: .agent), label(a, task: "design", source: .look)], def: setup.def)[a.start]?.task == "admin")
+    }
+
+    @Test func dropsAnswersFromAnotherSetup() {
+        #expect(Labeling.current([label(a, def: "stale000")], def: setup.def).isEmpty)
+    }
+
+    @Test func forgottenSessionsLoseTheirAnswers() {
+        let removed = session(at: 500)
+        #expect(Labeling.kept([label(a), label(removed)], sessions: [a]) == [label(a)])
+    }
+}
+
+struct LookTests {
+    let a = session(at: 0), b = session(at: 100), c = session(at: 200), d = session(at: 300)
+
+    @Test func looksWhereTheTextIsThinAndNothingWasRedacted() {
+        #expect(Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: "Canva")])))
+        #expect(!Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: String(repeating: "word ", count: 30))])))
+        #expect(!Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: fakeStripeKey)])))
+    }
+
+    @Test func sessionsNotYetSeenAreUnlabelledOrTextOnly() {
+        let labels = [label(b), label(c, source: .look), label(d, source: .agent)]
+        #expect(Labeling.unseen(sessions: [a, b, c, d], labels: labels, def: setup.def) == [a, b])
+    }
+}
+
+struct HandoffTests {
+    let sheet = session(at: 0, for: 600, app: "Sheets", title: "Invoices")
+    let sheetAgain = session(at: 700, for: 300, app: "Sheets", title: "Invoices")
+    let feed = session(at: 1000, for: 1200, app: "Chrome", title: "Instagram")
+    let call = session(at: 2200, for: 600, app: "Zoom", title: "Call")
+
+    var labels: [Label] {
+        [label(sheet, work: 1, automatable: 0.8, task: "admin"), label(sheetAgain, work: 1, automatable: 0.6, task: "content"),
+         label(feed, work: 0.25, automatable: 0.5, task: "leisure"), label(call, work: 1, automatable: 0, task: "meeting")]
+    }
+
+    @Test func timePerTaskWithTheShareAgentsCouldTakeOverOfWork() {
+        let tasks = Labeling.tasks(sessions: [sheet, sheetAgain, feed, call], labels: labels, def: setup.def)
+        #expect(tasks == [
+            .init(task: "leisure", seconds: 1200, work: 300, handoff: 150),
+            .init(task: "admin", seconds: 600, work: 600, handoff: 480),
+            .init(task: "meeting", seconds: 600, work: 600, handoff: 0),
+            .init(task: "content", seconds: 300, work: 300, handoff: 180),
+        ])
+    }
+
+    @Test func windowsRankByTimeAgentsCouldTakeOver() {
+        let candidates = Labeling.candidates(sessions: [sheet, sheetAgain, feed, call], labels: labels, def: setup.def)
+        #expect(candidates.map(\.window) == ["Invoices", "Instagram", "Call"])
+        #expect(candidates.first == .init(app: "Sheets", window: "Invoices", task: "admin", seconds: 900, handoff: 660, sessions: 2))
+    }
+
+    @Test func unlabelledSessionsAreLeftOut() {
+        #expect(Labeling.candidates(sessions: [sheet, call], labels: [], def: setup.def).isEmpty)
+    }
+}
+
+struct SessionStateTests {
+    @Test func gathersTheSessionsOwnScreenTextRedacted() {
+        let s = session(at: 0, for: 30)
+        let frames = [
+            row("before", at: -10, text: "earlier"),
+            row("a", at: 0, text: "Inbox\nkey \(fakeStripeKey)\nok"),
+            row("b", at: 10, newLines: ["Reply sent"]),
+            row("other", at: 15, display: 2, focused: false, text: "second screen"),
+            row("after", at: 30, newLines: ["later"]),
+        ]
+        let state = SessionState(s, frames: frames)
+        #expect(state.app == "Chrome" && state.window == "Tab" && state.seconds == 30)
+        #expect(state.screenText == "Inbox\nkey [redacted]\nok\nReply sent")
+    }
+
+    @Test func glancesAtTheSessionsEitherSide() {
+        let state = SessionState(session(at: 0), before: session(at: -40, for: 40, app: "Sheets", title: "Invoices"), frames: [])
+        #expect(state.before == "Sheets — Invoices (40s)")
+        #expect(state.after == "nothing")
+    }
+
+    @Test func capsTheText() {
+        let frames = [row("a", at: 0, text: String(repeating: "word ", count: 500))]
+        #expect(SessionState(session(at: 0), frames: frames, textLimit: 50).screenText.count == 50)
+    }
+
+    @Test func titlesOnlyLeavesTheTextOut() throws {
+        let state = SessionState(session(at: 0), frames: [row("a", at: 0, text: "secret")], textLimit: 0)
+        let json = String(decoding: try SystemOne.request(model: "m", state: state, kinds: setup.kinds, zeroRetention: false), as: UTF8.self)
+        #expect(!json.contains("secret") && !json.contains("screen_text"))
+    }
+}
+
+struct SystemOneTests {
+    func body(zeroRetention: Bool = false) throws -> [String: Any] {
+        let state = SessionState(session(at: 0), about: setup.about, frames: [])
+        let data = try SystemOne.request(model: "baseten/mammoth-1", state: state, kinds: setup.kinds, zeroRetention: zeroRetention)
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
+    @Test func asksWorkAutomatableAndTaskWithHerContext() throws {
+        let body = try body()
+        #expect(body["model"] as? String == "baseten/mammoth-1")
+        #expect((body["state"] as? [String: Any])?["about_the_person"] as? String == setup.about)
+        let questions = body["questions"] as? [String: [String: Any]]
+        #expect(questions?["work"]?["type"] as? String == "noul")
+        #expect((questions?["automatable"]?["criteria"] as? [String])?.count == 4)
+        #expect((questions?["task"]?["criteria"] as? [String: String])?["reels"] == "reels")
+    }
+
+    @Test func neverAllowsTrainingAndAsksForZeroRetentionWhenOn() throws {
+        #expect((try body()["providerOptions"] as? [String: [String: Bool]]) == ["gateway": ["disallowPromptTraining": true]])
+        #expect((try body(zeroRetention: true)["providerOptions"] as? [String: [String: Bool]])
+            == ["gateway": ["disallowPromptTraining": true, "zeroDataRetention": true]])
+    }
+
+    @Test func carriesTheScreenshotAsAnAssetTheStatePointsAt() throws {
+        let state = SessionState(session(at: 0), frames: [])
+        let data = try SystemOne.request(model: "m", state: state, kinds: setup.kinds, zeroRetention: false, screenshot: Data([1, 2, 3]))
+        let body = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        #expect((body["state"] as? [String: Any])?["screenshot"] as? String == "<<screen>>")
+        #expect((body["assets"] as? [String: [String: String]]) == ["screen": ["type": "image", "data_base64": "AQID", "format": "jpeg"]])
+        let plain = try JSONSerialization.jsonObject(with: try SystemOne.request(model: "m", state: state, kinds: setup.kinds, zeroRetention: false)) as? [String: Any] ?? [:]
+        #expect(plain["assets"] == nil && (plain["state"] as? [String: Any])?["screenshot"] == nil)
+    }
+
+    @Test func readsTheAnswersWithTheScoreAsAShare() {
+        let data = Data(#"{"answers": {"work": {"noul": 0.9}, "automatable": {"score": 1.5}, "task": {"choice": "design"}}}"#.utf8)
+        #expect(SystemOne.answers(data) == .success(.init(work: 0.9, automatable: 0.5, task: "design")))
+    }
+
+    @Test func aMissingAnswerIsAFailure() {
+        let data = Data(#"{"answers": {"work": {"noul": 0.9}}}"#.utf8)
+        guard case .failure(let error) = SystemOne.answers(data) else { Issue.record("accepted"); return }
+        #expect(error.message.contains("Missing"))
+    }
+}

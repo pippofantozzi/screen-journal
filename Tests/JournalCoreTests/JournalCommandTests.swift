@@ -41,7 +41,25 @@ struct JournalCommandTests {
         #expect(launch("--root", "/tmp/sj", "rebuild") == .command(.rebuild, root: "/tmp/sj"))
     }
 
+    /// Anything that isn't a command must never start a second recorder.
+    @Test func helpAndUnknownWordsNeverStartTheApp() {
+        for word in ["--help", "-h", "help"] {
+            guard case .help(let usage) = launch(word) else { Issue.record("\(word) started the app"); continue }
+            #expect(usage.contains("label"))
+        }
+        guard case .invalid(let message) = launch("lable", "--day", "2026-10-21") else { Issue.record("started"); return }
+        #expect(message.contains("lable"))
+    }
+
+    @Test func labelsEveryDayOrOneWithTextUnlessTitlesOnly() {
+        #expect(launch("label") == .command(.label(day: nil, titlesOnly: false, apply: false), root: nil))
+        #expect(launch("label", "--day", "2026-10-21", "--titles-only", "--apply")
+            == .command(.label(day: "2026-10-21", titlesOnly: true, apply: true), root: nil))
+    }
+
     @Test(arguments: [
+        ["label", "--day", "yesterday"],
+        ["label", "--day"],
         ["forget"],
         ["forget", "--from", "2026-10-21T19:00"],
         ["forget", "--from", "2026-10-21T19:00", "--to", "2026-10-21T18:00"],

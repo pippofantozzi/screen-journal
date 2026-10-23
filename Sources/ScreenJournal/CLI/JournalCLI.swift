@@ -23,6 +23,7 @@ struct JournalCLI {
         case let .forget(target, apply): return forget(target, apply: apply)
         case let .tidy(keepDays, apply): return tidy(keepDays: keepDays, apply: apply)
         case .rebuild: return withAppQuit { rebuild() }
+        case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
         }
     }
 
@@ -63,6 +64,7 @@ struct JournalCLI {
                     try store.rewrite(day: day.day, frames: day.plan.frames, events: day.plan.events, sessions: day.plan.sessions)
                     store.deleteImages(day.plan.deleteImages, day: day.day)
                     try store.summarize(day: day.day)
+                    try store.pruneLabels(day: day.day)
                 }
             } catch { return failed(error) }
             print("\nRemoved \(counts(days)). Freed \(megabytes(days.reduce(0) { $0 + $1.bytes })).")
@@ -173,17 +175,23 @@ struct JournalCLI {
             print("Nothing \(age) yet; the journal starts \(first).")
             return 0
         }
-        var deletions: [(day: String, images: [String], bytes: Int64)] = []
+        var deletions: [DaySlim] = []
         for day in old {
-            switch tidyPlan(day) {
-            case .delete(let images) where !images.isEmpty: deletions.append((day, images, store.size(day: day, files: images)))
-            case .delete: continue
-            case .refused(let reason): print("\(day): \(reason)")
+            switch slim(day) {
+            case .success(let slim) where !slim.images.isEmpty: deletions.append(slim)
+            case .success: continue
+            case .failure(let refusal): print("\(day): \(refusal.reason)")
             }
         }
         let verb = apply ? "freed" : "frees"
         for deletion in deletions {
-            if apply { store.deleteImages(deletion.images, day: deletion.day) }
+            if apply {
+                // Rows first, so no row ever points at a deleted screenshot.
+                do {
+                    try store.rewrite(day: deletion.day, frames: deletion.frames, events: deletion.rows.events, sessions: deletion.rows.sessions)
+                } catch { return failed(error) }
+                store.deleteImages(deletion.images, day: deletion.day)
+            }
             print("\(deletion.day): \(verb) \(megabytes(deletion.bytes)) (\(plural(deletion.images.count, "screenshot"))).")
         }
         let bytes = megabytes(deletions.reduce(0) { $0 + $1.bytes })
@@ -205,12 +213,31 @@ struct JournalCLI {
         print("Total  \(megabytes(sizes.reduce(0, +)))\n")
     }
 
-    private func tidyPlan(_ day: String) -> Tidy.Plan {
-        guard let rows = try? store.rows(day: day) else { return .refused("Couldn't read this day's rows.") }
-        return Tidy.plan(
+    /// One old day's tidy: screenshots to delete, and its rows repointed at the screenshots that stay.
+    private struct DaySlim {
+        let day: String
+        let rows: JournalStore.DayRows
+        let images: [String]
+        let frames: [FrameRecord]
+        let bytes: Int64
+    }
+
+    private struct Refusal: Error {
+        let reason: String
+    }
+
+    private func slim(_ day: String) -> Result<DaySlim, Refusal> {
+        guard let rows = try? store.rows(day: day) else { return .failure(Refusal(reason: "Couldn't read this day's rows.")) }
+        let plan = Tidy.plan(
             frames: rows.frames, sessions: rows.sessions,
             notes: rows.events.filter { $0.kind == .note }, imagesOnDisk: store.imagesOnDisk(day: day)
         )
+        switch plan {
+        case let .slim(images, frames):
+            return .success(DaySlim(day: day, rows: rows, images: images, frames: frames, bytes: store.size(day: day, files: images)))
+        case .refused(let reason):
+            return .failure(Refusal(reason: reason))
+        }
     }
 
     // MARK: rebuild
@@ -222,6 +249,161 @@ struct JournalCLI {
         } catch { return failed(error) }
         print("Rebuilt \(plural(days.count, "day")), index.md and week.md.")
         return 0
+    }
+
+    // MARK: label
+
+    /// One session to ask about, with what the model will see.
+    private struct Ask: Sendable {
+        let day: String
+        let session: Session
+        let state: SessionState
+        /// Sent along, to the vision model, when the text says too little.
+        let screenshot: URL?
+    }
+
+    private struct Answered: Sendable {
+        let ask: Ask
+        let source: Label.Source
+        let answers: Result<SystemOne.Answers, LabelError>
+    }
+
+    private func label(day: String?, titlesOnly: Bool, apply: Bool) -> Int32 {
+        let setup: LabelSetup
+        switch store.labelSetup() {
+        case .success(let found): setup = found
+        case .failure(let error): return failed(error)
+        }
+        let days = day.map { [$0] } ?? store.dayNames().sorted()
+        guard days.allSatisfy(store.dayNames().contains) else {
+            print("No captured day \(day ?? "").")
+            return 1
+        }
+        let asks: [Ask]
+        do { asks = try days.flatMap { try pending($0, setup: setup, titlesOnly: titlesOnly) } } catch { return failed(error) }
+
+        print(setup.about.isEmpty ? "No description of her work yet (Settings, or about in labels.json)." : "About her work: \(setup.about)")
+        print("Task kinds: \(setup.kinds.map(\.name).joined(separator: ", ")).")
+        for day in days {
+            let count = asks.filter { $0.day == day }.count, looks = asks.filter { $0.day == day && $0.screenshot != nil }.count
+            if count > 0 { print("\(day): \(plural(count, "session")) to label\(looks > 0 ? ", \(looks) with the screenshot" : "").") }
+        }
+        guard !asks.isEmpty else {
+            print("Every session is labelled.\n")
+            printHandoff(days, setup: setup)
+            return 0
+        }
+        let sent = titlesOnly ? "her description, app, window titles and durations" : "her description, app, window titles, durations and up to 600 characters of screen text (keys redacted)"
+        let retention = DecisionGateway.zeroRetention ? "zero data retention, no prompt training" : "no prompt training"
+        print("Sends, per session: \(sent), to \(DecisionGateway.model) through the Vercel AI Gateway (\(retention)).")
+        if asks.contains(where: { $0.screenshot != nil }) {
+            print("Sessions with little screen text and nothing redacted go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Advanced).")
+        }
+        guard apply else {
+            print("\nDry run: nothing sent. Add --apply to label them.\n")
+            printHandoff(days, setup: setup)
+            return 0
+        }
+        guard let gateway = DecisionGateway.configured() else {
+            print("\nNo AI Gateway key: save one in Settings → Advanced, or set \(DecisionGateway.keyName).")
+            return 1
+        }
+
+        let results = blocking { await Self.ask(asks, kinds: setup.kinds, gateway: gateway) }
+        var failures: [String] = []
+        for day in days {
+            let labels = results.filter { $0.ask.day == day }.compactMap { result -> Label? in
+                switch result.answers {
+                case .success(let a):
+                    return Label(session: result.ask.session.start, work: a.work, automatable: a.automatable, task: a.task, def: setup.def, source: result.source)
+                case .failure(let error):
+                    failures.append(error.message)
+                    return nil
+                }
+            }
+            do { try store.append(labels, day: day) } catch { return failed(error) }
+        }
+        print("\nLabelled \(plural(asks.count - failures.count, "session")).")
+        if let first = failures.first {
+            print("\(plural(failures.count, "session")) failed (first: \(first)). Run again to retry them.")
+        }
+        print("")
+        printHandoff(days, setup: setup)
+        return failures.isEmpty ? 0 : 1
+    }
+
+    /// Unlabelled sessions, plus, when she allows screenshots, text-only ones the screenshot would tell more about.
+    private func pending(_ day: String, setup: LabelSetup, titlesOnly: Bool) throws -> [Ask] {
+        let rows = try store.rows(day: day), labels = try store.labels(day: day)
+        let sessions = rows.sessions
+        let unlabelled = Set(Labeling.pending(sessions: sessions, labels: labels, def: setup.def).map(\.start))
+        let unseen = setup.look && !titlesOnly ? Set(Labeling.unseen(sessions: sessions, labels: labels, def: setup.def).map(\.start)) : []
+        return sessions.enumerated().compactMap { i, session in
+            guard unlabelled.contains(session.start) || unseen.contains(session.start) else { return nil }
+            let state = SessionState(
+                session, before: i > 0 ? sessions[i - 1] : nil, after: i + 1 < sessions.count ? sessions[i + 1] : nil,
+                about: setup.about, frames: rows.frames, textLimit: titlesOnly ? 0 : 600)
+            let image = store.dayDir(day).appending(path: session.representativeFrame)
+            let look = unseen.contains(session.start) && Labeling.wantsLook(state) && FileManager.default.fileExists(atPath: image.path)
+            guard look || unlabelled.contains(session.start) else { return nil }
+            return Ask(day: day, session: session, state: state, screenshot: look ? image : nil)
+        }
+    }
+
+    /// Eight requests in flight: each answers one session in under a second.
+    private static func ask(_ asks: [Ask], kinds: [TaskKind], gateway: DecisionGateway) async -> [Answered] {
+        await withTaskGroup(of: Answered.self) { group in
+            var results: [Answered] = []
+            var next = asks.makeIterator()
+            func start() {
+                guard let ask = next.next() else { return }
+                group.addTask {
+                    let screenshot = ask.screenshot.flatMap { ImageCodec.jpeg(at: $0) }
+                    return Answered(ask: ask, source: screenshot == nil ? .model : .look,
+                                    answers: await gateway.answers(ask.state, kinds: kinds, screenshot: screenshot))
+                }
+            }
+            for _ in 0..<8 { start() }
+            for await result in group {
+                results.append(result)
+                start()
+            }
+            return results
+        }
+    }
+
+    /// Time per task, then the windows agents could take most time off, across the days.
+    private func printHandoff(_ days: [String], setup: LabelSetup) {
+        var sessions: [Session] = [], labels: [Label] = []
+        for day in days {
+            guard let rows = try? store.rows(day: day), let found = try? store.labels(day: day) else { continue }
+            sessions += rows.sessions
+            labels += found
+        }
+        let tasks = Labeling.tasks(sessions: sessions, labels: labels, def: setup.def)
+        guard !tasks.isEmpty else { return }
+        print("Time by task (all / work / what agents could take over of the work):")
+        for t in tasks {
+            print("  \(Format.clock(t.seconds))\t\(Format.clock(t.work))\t\(Format.clock(t.handoff))\t\(t.task)")
+        }
+        let top = Labeling.candidates(sessions: sessions, labels: labels, def: setup.def).filter { $0.handoff >= 60 }.prefix(15)
+        guard !top.isEmpty else { return }
+        print("\nWhere to look first (windows by work time agents could take over; read their frames before believing it):")
+        for c in top {
+            print("  \(Format.clock(c.handoff)) of \(Format.clock(c.seconds))\t\(c.task)\t\(c.app) | \(c.window)\t\(plural(c.sessions, "session"))")
+        }
+    }
+
+    /// The command line is synchronous; network work runs on the cooperative pool while it waits.
+    private func blocking<T>(_ work: @escaping @Sendable () async -> T) -> T {
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: T?
+        Task.detached {
+            result = await work()
+            done.signal()
+        }
+        done.wait()
+        return result!
     }
 
     // MARK: shared

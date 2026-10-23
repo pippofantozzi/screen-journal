@@ -10,6 +10,9 @@ enum Entry {
             ScreenJournalApp.main()
         case let .command(command, root):
             exit(JournalCLI(command: command, root: root).run())
+        case .help(let usage):
+            print(usage)
+            exit(0)
         case .invalid(let message):
             FileHandle.standardError.write(Data((message + "\n").utf8))
             exit(2)

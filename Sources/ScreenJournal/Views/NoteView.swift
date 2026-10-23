@@ -4,6 +4,7 @@ import SwiftUI
 /// The highest-signal input Claude gets: "this part is tedious".
 struct NoteView: View {
     let onSave: (String) -> Void
+    let onCancel: () -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
 
@@ -18,12 +19,16 @@ struct NoteView: View {
                 .onSubmit { onSave(text) }
             HStack {
                 Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
                 Button("Save Note") { onSave(text) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(20)
-        .onAppear { focused = true }
+        // The panel turns key a moment after the view appears; focusing on appear alone is lost.
+        .defaultFocus($focused, true)
+        .onAppear { DispatchQueue.main.async { focused = true } }
     }
 }

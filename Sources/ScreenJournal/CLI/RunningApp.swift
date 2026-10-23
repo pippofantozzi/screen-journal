@@ -4,6 +4,11 @@ import AppKit
 struct RunningApp {
     static let bundleID = "com.filippofantozzi.ScreenJournal"
 
+    /// Another copy is already recording; a second would write every frame twice.
+    static var anotherIsRunning: Bool {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains { $0.processIdentifier != getpid() }
+    }
+
     /// Quits a running copy and returns where it was launched from, or nil when it wasn't running.
     static func quit() -> URL? {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)

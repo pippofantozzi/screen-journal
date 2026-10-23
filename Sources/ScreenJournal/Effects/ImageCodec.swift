@@ -29,6 +29,21 @@ enum ImageCodec {
         guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
     }
 
+    /// A screenshot as JPEG for the vision model, long side capped below its 1568-pixel limit.
+    static func jpeg(at url: URL, maxPixelSize: Int = 1024, quality: Double = 0.7) -> Data? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+              ] as CFDictionary)
+        else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
+    }
+
     private static func resized(_ image: CGImage, by scale: Double) -> CGImage {
         let width = Int(Double(image.width) * scale), height = Int(Double(image.height) * scale)
         guard let context = CGContext(

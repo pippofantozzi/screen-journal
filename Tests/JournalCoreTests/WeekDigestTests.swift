@@ -23,6 +23,18 @@ struct WeekDigestTests {
         ]
     }
 
+    @Test func coversSevenDatesEndingToday() {
+        let old = day("2026-10-14", [frame("z", at: 0, for: 6000, app: "Old")])
+        let md = WeekDigest.markdown(week + [old], endingOn: "2026-10-21", timeZone: rome)
+        #expect(md.hasPrefix("# Week of 2026-10-15 – 2026-10-21\n"))
+        #expect(md.contains("Active: 21m across 3 days."))
+        #expect(!md.contains("Old"))
+    }
+
+    @Test func weekCrossesMonthBoundary() {
+        #expect(WeekDigest.markdown([], endingOn: "2026-11-03", timeZone: rome).hasPrefix("# Week of 2026-10-28 – 2026-11-03\n"))
+    }
+
     @Test func findsWindowsSeenOnSeveralDaysMostDaysFirst() {
         let recurring = WeekDigest.recurringWindows(week)
         #expect(recurring.map(\.name) == ["Excel — Report.xlsx", "Mail — Inbox"])
@@ -35,8 +47,8 @@ struct WeekDigestTests {
     }
 
     @Test func sumsAppTimeAndSwitchesAcrossDays() {
-        let md = WeekDigest.markdown(week, timeZone: rome)
-        #expect(md.hasPrefix("# Week of 2026-10-19 – 2026-10-21\n"))
+        let md = WeekDigest.markdown(week, endingOn: "2026-10-21", timeZone: rome)
+        #expect(md.hasPrefix("# Week of 2026-10-15 – 2026-10-21\n"))
         #expect(md.contains("Active: 21m across 3 days."))
         #expect(md.contains("- 17m Excel\n- 4m Mail"))
         #expect(md.contains("- 3× Excel → Mail"))
@@ -45,13 +57,13 @@ struct WeekDigestTests {
     }
 
     @Test func aSingleDaySaysSoAndExplainsMissingRecurringWindows() {
-        let md = WeekDigest.markdown([week[0]], timeZone: rome)
+        let md = WeekDigest.markdown([week[0]], endingOn: "2026-10-21", timeZone: rome)
         #expect(md.contains("Active: 11m across 1 day."))
         #expect(md.contains("## Recurring windows\n\nNone yet: a window shows up here once it comes back on a second day.\n"))
     }
 
     @Test func groupsNotesByDay() {
-        let md = WeekDigest.markdown(week, timeZone: rome)
+        let md = WeekDigest.markdown(week, endingOn: "2026-10-21", timeZone: rome)
         #expect(md.contains("### 2026-10-21\n\n- 19:46 — export again"))
         #expect(!md.contains("### 2026-10-19"))
     }
