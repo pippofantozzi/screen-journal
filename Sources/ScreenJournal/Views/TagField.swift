@@ -5,24 +5,31 @@ import SwiftUI
 /// The fixed tags come first and can't be changed; typing one of them lights it up instead.
 struct TagField: View {
     @Binding var tags: [String]
-    /// Name and what it means, shown on hover.
-    let fixed: [(name: String, meaning: String)]
+    let fixed: [Fixed]
     let prompt: String
     @State private var draft = ""
     /// The tag being edited; Return puts it back in the same place.
     @State private var editing: Int?
     /// The tag she just tried to add again, lit up for a moment.
     @State private var echoed: String?
+    @Environment(\.language) private var language
+
+    /// A tag that's always there: `id` is what the journal stores, `name` what she reads, `meaning` shown on hover.
+    struct Fixed {
+        let id: String
+        let name: String
+        let meaning: String
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             FlowLayout(spacing: 6) {
-                ForEach(fixed, id: \.name) { fixedChip($0.name).help($0.meaning) }
+                ForEach(fixed, id: \.id) { fixedChip($0) }
                 ForEach(Array(tags.enumerated()), id: \.offset) { index, tag in
                     chip(tag, at: index)
                 }
             }
-            TextField("", text: $draft, prompt: Text(editing == nil ? prompt : "Edit, then press Return"))
+            TextField("", text: $draft, prompt: Text(editing == nil ? prompt : language("Edit, then press Return")))
                 .labelsHidden()
                 .onSubmit(commit)
                 .onExitCommand(perform: cancel)
@@ -38,32 +45,39 @@ struct TagField: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .accessibilityLabel("Delete \(tag)")
+            .accessibilityLabel(language("Delete %@", tag))
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .background(Capsule().fill(editing == index || echoed == tag ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.18)))
     }
 
-    private func fixedChip(_ tag: String) -> some View {
-        Text(tag)
+    private func fixedChip(_ tag: Fixed) -> some View {
+        Text(tag.name)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Capsule().strokeBorder(echoed == tag ? Color.accentColor : Color.secondary.opacity(0.3)))
-            .background(Capsule().fill(echoed == tag ? Color.accentColor.opacity(0.2) : .clear))
+            .background(Capsule().strokeBorder(echoed == tag.id ? Color.accentColor : Color.secondary.opacity(0.3)))
+            .background(Capsule().fill(echoed == tag.id ? Color.accentColor.opacity(0.2) : .clear))
+            .help(tag.meaning)
     }
 
     /// A repeat, even of the tag being edited into another one, lights up the one already there and changes nothing.
     private func commit() {
         var others = tags
         if let editing { others.remove(at: editing) }
-        if let match = LabelSetup.included(draft, in: others) { return echo(match) }
+        if let match = fixedMatch(draft) ?? LabelSetup.included(draft, in: others) { return echo(match) }
         let added = LabelSetup.adding(draft, to: others)
         if let editing, added.count > others.count { others.insert(added.last!, at: editing) }
         tags = editing == nil ? added : others
         draft = ""
         editing = nil
+    }
+
+    /// A fixed tag typed by its name in her language, ignoring case and accents: "Conteudo" is "content".
+    private func fixedMatch(_ draft: String) -> String? {
+        let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return fixed.first { $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }?.id
     }
 
     private func echo(_ tag: String) {

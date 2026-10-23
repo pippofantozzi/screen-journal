@@ -7,6 +7,8 @@ struct SettingsView: View {
     let showGuide: () -> Void
     @AppStorage(Preferences.interval) private var interval = 10.0
     @AppStorage(Preferences.retentionDays) private var retentionDays = 30
+    @AppStorage(Preferences.language) private var chosenLanguage = Language.default
+    @Environment(\.language) private var language
     @State private var about = ""
     @State private var tasks: [String] = []
     @State private var look = false
@@ -24,59 +26,64 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Take a snapshot every", selection: $interval) {
-                    ForEach(Preferences.intervalOptions, id: \.self) { Text("\(Int($0)) seconds").tag($0) }
+                Picker(language("Take a snapshot every"), selection: $interval) {
+                    ForEach(Preferences.intervalOptions, id: \.self) { Text(language("%@ seconds", "\(Int($0))")).tag($0) }
                 }
-                Stepper("Keep the last \(retentionDays) days", value: $retentionDays, in: 3...180, step: 1)
+                Stepper(language("Keep the last %@ days", "\(retentionDays)"), value: $retentionDays, in: 3...180, step: 1)
             } header: {
-                Text("Capture")
+                Text(language("Capture"))
             } footer: {
                 Text(noteShortcutWorks
-                    ? "Press \(GlobalHotKey.note.label) in any app to note what's going on."
-                    : "Another app uses \(GlobalHotKey.note.label); note moments from the menu instead.")
+                    ? language("Press %@ in any app to note what's going on.", GlobalHotKey.note.label)
+                    : language("Another app uses %@; note moments from the menu instead.", GlobalHotKey.note.label))
             }
 
             Section {
-                TextField("What you do", text: $about, prompt: Text("I do marketing for clients, so Instagram is usually work."), axis: .vertical)
+                TextField(language("What you do"), text: $about, prompt: Text(language("I do marketing for clients, so Instagram is usually work.")), axis: .vertical)
                     .lineLimit(3...6)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Kinds of task")
-                    TagField(tags: $tasks, fixed: TaskKind.defaults.map { ($0.name, $0.description) }, prompt: "Add your own, then press Return")
+                    Text(language("Kinds of task"))
+                    TagField(tags: $tasks, fixed: TaskKind.defaults.map { .init(id: $0.name, name: language.name(ofKind: $0.name), meaning: language.meaning(of: $0)) },
+                             prompt: language("Add your own, then press Return"))
                 }
             } header: {
-                Text("Your work")
+                Text(language("Your work"))
             } footer: {
-                Text("Helps tell your work from the rest, and sort it. The outlined kinds are always there; point at one to see what it covers, click one of yours to edit it.")
+                Text(language("Helps tell your work from the rest, and sort it. The outlined kinds are always there; point at one to see what it covers, click one of yours to edit it."))
             }
 
             Section {
                 DisclosureGroup(isExpanded: $showConnect) {
                     keyRow
                     if !keySaved, case .failed(let message) = keyStatus { Text(message).foregroundStyle(.red) }
-                    Toggle("Show screenshots when a window has little text", isOn: $look)
-                    Text("The key lets an AI model sort your sessions into kinds of task. It stays in this Mac's Keychain; Claude never sees it. "
-                        + "Screenshots help with design tools, photos and video, but they're sent as they are: nothing on them can be hidden.")
+                    Toggle(language("Show screenshots when a window has little text"), isOn: $look)
+                    Text(language("The key lets an AI model sort your sessions into kinds of task. It stays in this Mac's Keychain; Claude never sees it. Screenshots help with design tools, photos and video, but they're sent as they are: nothing on them can be hidden."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } label: {
                     // The whole row opens it, not just the chevron.
                     HStack {
-                        Text("Connect AI categorization")
+                        Text(language("Connect AI categorization"))
                         Spacer()
-                        if keySaved { Text("Connected").foregroundStyle(.secondary) }
+                        if keySaved { Text(language("Connected")).foregroundStyle(.secondary) }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { withAnimation { showConnect.toggle() } }
                 }
             }
 
+            // Set once, if ever: at the bottom with the rest she rarely needs.
             Section {
+                // Both languages, so it can be found whichever one is on.
+                Picker("Idioma · Language", selection: $chosenLanguage) {
+                    ForEach(Language.allCases, id: \.self) { Text($0.name).tag($0) }
+                }
                 HStack {
-                    Button("How It Works", action: showGuide)
-                    Button("Open Journal Folder", action: model.openFolder)
+                    Button(language("How It Works"), action: showGuide)
+                    Button(language("Open Journal Folder"), action: model.openFolder)
                     Spacer()
                     if model.updater.isAvailable {
-                        Button("Check for Updates", action: model.updater.checkForUpdates)
+                        Button(language("Check for Updates"), action: model.updater.checkForUpdates)
                     }
                 }
             }
@@ -89,12 +96,12 @@ struct SettingsView: View {
     }
 
     private var keyRow: some View {
-        LabeledContent("AI Gateway key") {
+        LabeledContent(language("AI Gateway key")) {
             if keySaved {
                 HStack {
                     keyStatusText
-                    Button("Check", action: check).disabled(keyStatus == .checking)
-                    Button("Disconnect", action: removeKey)
+                    Button(language("Check"), action: check).disabled(keyStatus == .checking)
+                    Button(language("Disconnect"), action: removeKey)
                 }
             } else {
                 HStack {
@@ -102,7 +109,7 @@ struct SettingsView: View {
                         .labelsHidden()
                         .frame(width: 200)
                         .onSubmit(saveKey)
-                    Button("Save", action: saveKey).disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button(language("Save"), action: saveKey).disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
@@ -110,9 +117,9 @@ struct SettingsView: View {
 
     @ViewBuilder private var keyStatusText: some View {
         switch keyStatus {
-        case .idle: Text("Saved").foregroundStyle(.secondary)
+        case .idle: Text(language("Saved")).foregroundStyle(.secondary)
         case .checking: ProgressView().controlSize(.small)
-        case .works: Text("Works").foregroundStyle(.green)
+        case .works: Text(language("Works")).foregroundStyle(.green)
         case .failed(let message): Text(message).foregroundStyle(.red).lineLimit(2).help(message)
         }
     }
@@ -143,7 +150,7 @@ struct SettingsView: View {
         Task {
             switch await DecisionGateway(key: key).check() {
             case .success: keyStatus = .works
-            case .failure(let error): keyStatus = .failed(error.message.hasPrefix("401") || error.message.hasPrefix("403") ? "The gateway refused this key." : error.message)
+            case .failure(let error): keyStatus = .failed(error.message.hasPrefix("401") || error.message.hasPrefix("403") ? language("The gateway refused this key.") : error.message)
             }
         }
     }

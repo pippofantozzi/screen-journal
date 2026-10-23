@@ -1,7 +1,7 @@
 /// Files the app keeps in the journal root so a Claude Code session there knows how to read it.
 /// Bump `version` whenever the text changes; the app rewrites stale copies on launch.
 public enum JournalGuide {
-    public static let version = 13
+    public static let version = 14
     public static let marker = "<!-- screen-journal-guide v\(version) -->"
     /// A link the app refreshes at every launch to its own binary.
     public static let commandPath = ".claude/sj"
@@ -32,6 +32,8 @@ public enum JournalGuide {
 
     This folder is a passive record of one person's computer work, captured by the Screen Journal app on this Mac.
     The person talking to you is its owner. Read `profile.md` first when it exists: who they are, what they work on, the people and tools involved, and what they have agreed to. Without it, assume they are not a developer: speak plainly and skip jargon. Either way, say what you are about to do before running anything that deletes or changes files, and call the owner "they" unless the profile says otherwise.
+
+    The app may be in Portuguese (the default). When you point them to it, use the names they see: Settings is Ajustes, Connect AI categorization is Conectar categorização por IA, Keep the last N days is Manter os últimos N dias, task kinds are Tipos de tarefa. The journal itself (kinds, labels, files) stays in English.
 
     ## Privacy
     - Everything here stays on this Mac. Screenshots and screen text never go to any website, API, or other service.

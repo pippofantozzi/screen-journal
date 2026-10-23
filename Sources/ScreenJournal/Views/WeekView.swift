@@ -7,6 +7,7 @@ struct WeekView: View {
     let store: JournalStore
     @State private var lastDay: String
     @State private var phase: Phase = .loading
+    @Environment(\.language) private var language
     private let today: String
 
     enum Phase {
@@ -39,16 +40,16 @@ struct WeekView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             if case .loaded(let report) = phase {
-                Text(report.tracked > 0 ? "\(Hours.text(report.tracked)) tracked" : "Nothing tracked")
+                Text(report.tracked > 0 ? language("%@ tracked", hours(report.tracked)) : language("Nothing tracked"))
                     .font(.title2.weight(.semibold))
             }
             Spacer()
             Button { step(-7) } label: { Image(systemName: "chevron.left") }
-                .help("The week before")
+                .help(language("The week before"))
             Text(range).monospacedDigit().foregroundStyle(.secondary)
             Button { step(7) } label: { Image(systemName: "chevron.right") }
                 .disabled(lastDay >= today)
-                .help("The week after")
+                .help(language("The week after"))
         }
         .buttonStyle(.borderless)
     }
@@ -56,15 +57,15 @@ struct WeekView: View {
     @ViewBuilder private func content(_ report: WeekReport) -> some View {
         if report.tasks.isEmpty {
             Text(report.tracked > 0
-                ? "Nothing sorted yet this week. Once your sessions are sorted, you'll see here where your time went."
-                : "Screen Journal wasn't recording these days.")
+                ? language("Nothing sorted yet this week. Once your sessions are sorted, you'll see here where your time went.")
+                : language("Screen Journal wasn't recording these days."))
                 .foregroundStyle(.secondary)
         } else {
-            TaskBars(tasks: report.tasks)
+            TaskBars(tasks: report.tasks, language: language)
             if !report.candidates.isEmpty { suggestions(report.candidates) }
         }
         if report.unsorted >= 60, !report.tasks.isEmpty {
-            Text("Not sorted yet: \(Hours.text(report.unsorted)). It shows up here once it's sorted.")
+            Text(language("Not sorted yet: %@. It shows up here once it's sorted.", hours(report.unsorted)))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -72,13 +73,13 @@ struct WeekView: View {
 
     private func suggestions(_ candidates: [Labeling.Candidate]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Where Claude could help most").font(.headline)
+            Text(language("Where Claude could help most")).font(.headline)
             ForEach(Array(candidates.enumerated()), id: \.offset) { index, c in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\(index + 1).").foregroundStyle(.secondary).monospacedDigit()
                     VStack(alignment: .leading, spacing: 2) {
                         Text(c.window.isEmpty ? c.app : "\(c.app) — \(c.window)").lineLimit(1).truncationMode(.middle)
-                        Text("\(Hours.text(c.seconds)) · \(c.task)").font(.callout).foregroundStyle(.secondary)
+                        Text("\(hours(c.seconds)) · \(language.name(ofKind: c.task))").font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -88,8 +89,10 @@ struct WeekView: View {
     private var range: String {
         let days = WeekReport.days(endingOn: lastDay)
         guard let first = Hours.date(days.first ?? lastDay), let last = Hours.date(lastDay) else { return lastDay }
-        return (first..<last.addingTimeInterval(1)).formatted(.interval.month(.abbreviated).day())
+        return (first..<last.addingTimeInterval(1)).formatted(.interval.month(.abbreviated).day().locale(language.locale))
     }
+
+    private func hours(_ seconds: TimeInterval) -> String { Hours.text(seconds, in: language) }
 
     private func step(_ days: Int) {
         guard let date = Hours.date(lastDay) else { return }
@@ -109,6 +112,7 @@ struct WeekView: View {
 /// One bar per task, as long as its time; the dark part is the share Claude could probably take over.
 private struct TaskBars: View {
     let tasks: [Labeling.TaskTime]
+    let language: Language
 
     var body: some View {
         let longest = tasks.map(\.seconds).max() ?? 1
@@ -116,9 +120,9 @@ private struct TaskBars: View {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 ForEach(tasks, id: \.task) { task in
                     GridRow {
-                        Text(task.task.capitalized)
+                        Text(language.name(ofKind: task.task).capitalized(with: language.locale))
                         bar(task, of: longest)
-                        Text(Hours.text(task.seconds)).monospacedDigit().gridColumnAlignment(.trailing)
+                        Text(Hours.text(task.seconds, in: language)).monospacedDigit().gridColumnAlignment(.trailing)
                         Text(task.helpShare >= 0.05 ? "~\(Int((task.helpShare * 100).rounded()))%" : "")
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
@@ -141,13 +145,14 @@ private struct TaskBars: View {
             .frame(width: max(total, 2), alignment: .leading)
         }
         .frame(height: 12)
-        .help("\(task.task.capitalized): \(Hours.text(task.seconds)), of which Claude could probably take over \(Hours.text(task.handoff))")
+        .help(language("%@: %@, of which Claude could probably take over %@", language.name(ofKind: task.task).capitalized(with: language.locale),
+                       Hours.text(task.seconds, in: language), Hours.text(task.handoff, in: language)))
     }
 
     private var legend: some View {
         HStack(spacing: 14) {
-            swatch(Color.accentColor, "Claude could probably take over")
-            swatch(Color.accentColor.opacity(0.3), "The rest")
+            swatch(Color.accentColor, language("Claude could probably take over"))
+            swatch(Color.accentColor.opacity(0.3), language("The rest"))
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -163,8 +168,8 @@ private struct TaskBars: View {
 
 /// Durations and day names the way she reads them.
 private enum Hours {
-    static func text(_ seconds: TimeInterval) -> String {
-        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .narrow, maximumUnitCount: 2))
+    static func text(_ seconds: TimeInterval, in language: Language) -> String {
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .narrow, maximumUnitCount: 2).locale(language.locale))
     }
 
     static func date(_ day: String) -> Date? {

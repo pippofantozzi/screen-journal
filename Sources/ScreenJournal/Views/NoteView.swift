@@ -1,3 +1,4 @@
+import JournalCore
 import SwiftUI
 
 /// A one-line note that lands in the journal with a timestamp.
@@ -7,21 +8,22 @@ struct NoteView: View {
     let onCancel: () -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
+    @Environment(\.language) private var language
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What's going on right now?")
+            Text(language("What's going on right now?"))
                 .font(.headline)
-            TextField("e.g. copying invoices into the spreadsheet again", text: $text, axis: .vertical)
+            TextField(language("e.g. copying invoices into the spreadsheet again"), text: $text, axis: .vertical)
                 .lineLimit(2...4)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit { onSave(text) }
             HStack {
                 Spacer()
-                Button("Cancel", action: onCancel)
+                Button(language("Cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Save Note") { onSave(text) }
+                Button(language("Save Note")) { onSave(text) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
             }

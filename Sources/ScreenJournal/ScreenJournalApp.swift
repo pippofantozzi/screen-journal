@@ -1,4 +1,5 @@
 import AppKit
+import JournalCore
 import SwiftUI
 
 struct ScreenJournalApp: App {
@@ -6,7 +7,7 @@ struct ScreenJournalApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(model: delegate.model, windows: delegate.windows)
+            Localized { MenuContent(model: delegate.model, windows: delegate.windows) }
         } label: {
             StatusIcon(model: delegate.model)
         }
@@ -64,7 +65,7 @@ final class WindowPresenter {
 
     func showOnboarding(at step: OnboardingView.Step? = nil) {
         if let step { UserDefaults.standard.set(step.rawValue, forKey: OnboardingView.stepKey) }
-        show("onboarding", title: "Welcome", size: CGSize(width: 520, height: 480), chromeless: true) {
+        show("onboarding", title: language("Welcome"), size: CGSize(width: 520, height: 480), chromeless: true) {
             OnboardingView(
                 model: self.model,
                 onFinish: { [weak self] in self?.close("onboarding") }
@@ -73,19 +74,19 @@ final class WindowPresenter {
     }
 
     func showGuide() {
-        show("guide", title: "How Screen Journal Works", size: CGSize(width: 520, height: 560), chromeless: true) {
+        show("guide", title: language("How Screen Journal Works"), size: CGSize(width: 520, height: 560), chromeless: true) {
             GuideView { [weak self] in self?.close("guide") }
         }
     }
 
     func showWeek() {
-        show("week", title: "Your Week", size: CGSize(width: 520, height: 600)) {
+        show("week", title: language("Your Week"), size: CGSize(width: 520, height: 600)) {
             WeekView(store: self.model.store)
         }
     }
 
     func showSettings() {
-        show("settings", title: "Screen Journal Settings", size: CGSize(width: 460, height: 590)) {
+        show("settings", title: language("Screen Journal Settings"), size: CGSize(width: 500, height: 660)) {
             SettingsView(model: self.model, noteShortcutWorks: self.noteShortcutWorks) { [weak self] in self?.showGuide() }
         }
     }
@@ -110,21 +111,24 @@ final class WindowPresenter {
             contentRect: CGRect(origin: .zero, size: CGSize(width: 420, height: 170)),
             styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false
         )
-        panel.title = "Note this moment"
+        panel.title = language("Note this moment")
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        panel.contentView = NSHostingView(rootView: NoteView(
+        panel.contentView = NSHostingView(rootView: Localized { NoteView(
             onSave: { [weak self] text in
                 self?.model.addNote(text, about: moment)
                 self?.close("note")
             },
             onCancel: { [weak self] in self?.close("note") }
-        ))
+        ) })
         panel.center()
         track(panel, as: "note")
         panel.makeKeyAndOrderFront(nil)
     }
+
+    /// Window titles are AppKit's, read once when a window opens.
+    private var language: Language { Preferences.currentLanguage }
 
     private func show<Content: View>(_ id: String, title: String, size: CGSize, chromeless: Bool = false, content: () -> Content) {
         if let existing = windows[id] {
@@ -140,7 +144,8 @@ final class WindowPresenter {
         window.title = title
         window.titlebarAppearsTransparent = chromeless
         window.titleVisibility = chromeless ? .hidden : .visible
-        window.contentView = NSHostingView(rootView: content())
+        let root = content()
+        window.contentView = NSHostingView(rootView: Localized { root })
         window.center()
         track(window, as: id)
         window.makeKeyAndOrderFront(nil)

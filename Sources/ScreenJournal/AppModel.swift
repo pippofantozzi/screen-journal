@@ -10,6 +10,12 @@ enum Preferences {
     static let onboarded = "onboarded"
     /// The Accessibility step came after the first release, so people who onboarded before it see it once.
     static let askedContext = "askedContext"
+    static let language = "language"
+
+    /// For AppKit, which reads it once when a window opens; SwiftUI views follow it live through `Localized`.
+    static var currentLanguage: Language {
+        UserDefaults.standard.string(forKey: language).flatMap(Language.init(rawValue:)) ?? .default
+    }
 
     static let intervalOptions: [TimeInterval] = [5, 10, 15, 30, 60]
 
@@ -21,6 +27,7 @@ enum Preferences {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             interval: 10.0, retentionDays: 30, excludedApps: defaultExcludedApps, pausedUntil: 0.0, onboarded: false, askedContext: false,
+            language: Language.default.rawValue,
         ])
     }
 }

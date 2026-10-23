@@ -1,3 +1,4 @@
+import JournalCore
 import SwiftUI
 
 struct StatusIcon: View {
@@ -20,58 +21,59 @@ struct StatusIcon: View {
 struct MenuContent: View {
     let model: AppModel
     let windows: WindowPresenter
+    @Environment(\.language) private var language
 
     var body: some View {
         Text(headline)
 
         if model.status == .needsScreenAccess {
-            Button("Turn Screen Access Back On…") { windows.showOnboarding(at: .screenAccess) }
+            Button(language("Turn Screen Access Back On…")) { windows.showOnboarding(at: .screenAccess) }
         }
 
         Divider()
 
         if model.pausedUntil == nil {
-            Menu("Pause") {
-                Button("For 15 Minutes") { model.pause(for: 15 * 60) }
-                Button("For 1 Hour") { model.pause(for: 60 * 60) }
-                Button("Until I Resume") { model.pause(for: nil) }
+            Menu(language("Pause")) {
+                Button(language("For 15 Minutes")) { model.pause(for: 15 * 60) }
+                Button(language("For 1 Hour")) { model.pause(for: 60 * 60) }
+                Button(language("Until I Resume")) { model.pause(for: nil) }
             }
         } else {
-            Button("Resume") { model.resume() }
+            Button(language("Resume")) { model.resume() }
         }
         // Shows ⌥Space beside the item, so the menu teaches the shortcut that works everywhere.
-        Button("Note This Moment…") { windows.showNote() }
+        Button(language("Note This Moment…")) { windows.showNote() }
             .keyboardShortcut(.space, modifiers: .option)
-        Button("Your Week…") { windows.showWeek() }
+        Button(language("Your Week…")) { windows.showWeek() }
         // One place for everything else, so there's never a second place to look.
-        Button("Settings…") { windows.showSettings() }
+        Button(language("Settings…")) { windows.showSettings() }
             .keyboardShortcut(",")
 
         Divider()
 
-        Button("Quit Screen Journal") { NSApp.terminate(nil) }
+        Button(language("Quit Screen Journal")) { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 
     private var headline: String {
         switch model.status {
-        case .starting: "Starting…"
+        case .starting: language("Starting…")
         case .recording: recordingLine
         case .paused: pausedLine
-        case .resting: "Resting while you're away"
-        case .needsScreenAccess: "Needs Screen Recording access"
-        case .failing: "Can't capture right now"
+        case .resting: language("Resting while you're away")
+        case .needsScreenAccess: language("Needs Screen Recording access")
+        case .failing: language("Can't capture right now")
         }
     }
 
     private var recordingLine: String {
-        let moments = model.momentsToday == 1 ? "1 moment" : "\(model.momentsToday) moments"
-        guard model.bytesToday > 0 else { return "Recording · \(moments) today" }
-        return "Recording · \(moments) today · \(ByteCountFormatter.string(fromByteCount: model.bytesToday, countStyle: .file))"
+        let moments = model.momentsToday == 1 ? language("1 moment") : language("%@ moments", model.momentsToday.formatted(.number.locale(language.locale)))
+        guard model.bytesToday > 0 else { return language("Recording · %@ today", moments) }
+        return language("Recording · %@ today · %@", moments, ByteCountFormatter.string(fromByteCount: model.bytesToday, countStyle: .file))
     }
 
     private var pausedLine: String {
-        guard let until = model.pausedUntil, until < .distantFuture else { return "Paused" }
-        return "Paused until \(until.formatted(date: .omitted, time: .shortened))"
+        guard let until = model.pausedUntil, until < .distantFuture else { return language("Paused") }
+        return language("Paused until %@", until.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(language.locale)))
     }
 }

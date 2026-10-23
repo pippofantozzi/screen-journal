@@ -1,3 +1,4 @@
+import JournalCore
 import SwiftUI
 
 /// Four calm steps: what this is, screen access, chats and folders, ready. Open at login is turned on at the end.
@@ -29,6 +30,7 @@ struct OnboardingView: View {
 
     let model: AppModel
     let onFinish: () -> Void
+    @Environment(\.language) private var language
 
     @AppStorage(OnboardingView.stepKey) private var stepRaw = Step.welcome.rawValue
 
@@ -44,9 +46,9 @@ struct OnboardingView: View {
         switch step {
         case .welcome:
             StepCard(
-                title: "Hi! Let's learn how you work",
-                message: "Screen Journal quietly takes a snapshot of your screen every few seconds, but only when something changed. Everything stays on this Mac. After a week or two, Claude can read it and suggest ways to automate the boring parts.",
-                action: ("Get Started", { advance(to: .screenAccess) })
+                title: language("Hi! Let's learn how you work"),
+                message: language("Screen Journal quietly takes a snapshot of your screen every few seconds, but only when something changed. Everything stays on this Mac. After a week or two, Claude can read it and suggest ways to automate the boring parts."),
+                action: (language("Get Started"), { advance(to: .screenAccess) })
             )
         case .screenAccess:
             ScreenAccessStep { advance(to: .context) }
@@ -92,19 +94,20 @@ private struct ScreenAccessStep: View {
     let onGranted: () -> Void
     @State private var granted = SystemAccess.hasScreenAccess
     @State private var asked = false
+    @Environment(\.language) private var language
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("Allow screen snapshots").font(.title2.weight(.semibold))
-            Text("macOS will ask you to turn on Screen Journal under **Screen & System Audio Recording**. Flip the switch, then come back here.")
+            Text(language("Allow screen snapshots")).font(.title2.weight(.semibold))
+            Text(markdown: language("macOS will ask you to turn on Screen Journal under **Screen & System Audio Recording**. Flip the switch, then come back here."))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
             if granted {
-                GrantedBadge(text: "Access granted")
+                GrantedBadge(text: language("Access granted"))
             } else {
-                Button(asked ? "Open System Settings Again" : "Open System Settings") {
+                Button(asked ? language("Open System Settings Again") : language("Open System Settings")) {
                     asked = true
                     SystemAccess.requestScreenAccess()
                 }
@@ -113,7 +116,7 @@ private struct ScreenAccessStep: View {
                 .padding(.top, 10)
 
                 if asked {
-                    Button("Already switched it on? Restart Screen Journal") { SystemAccess.relaunch() }
+                    Button(language("Already switched it on? Restart Screen Journal")) { SystemAccess.relaunch() }
                         .buttonStyle(.link)
                         .transition(.opacity)
                 }
@@ -135,22 +138,23 @@ private struct ScreenAccessStep: View {
 private struct ContextStep: View {
     let onDone: () -> Void
     @State private var granted = WindowContext.isTrusted
+    @Environment(\.language) private var language
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("Know which chat and which page").font(.title2.weight(.semibold))
-            Text("Turn on Screen Journal under **Accessibility**, so the journal also notes which chat, website or folder is open.")
+            Text(language("Know which chat and which page")).font(.title2.weight(.semibold))
+            Text(markdown: language("Turn on Screen Journal under **Accessibility**, so the journal also notes which chat, website or folder is open."))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             if granted {
-                GrantedBadge(text: "Turned on")
+                GrantedBadge(text: language("Turned on"))
             } else {
-                Button("Open System Settings") { WindowContext.requestTrust() }
+                Button(language("Open System Settings")) { WindowContext.requestTrust() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .padding(.top, 10)
-                Button("Skip for Now", action: onDone).buttonStyle(.link)
+                Button(language("Skip for Now"), action: onDone).buttonStyle(.link)
             }
         }
         .task {
@@ -168,13 +172,14 @@ private struct ContextStep: View {
 private struct ReadyStep: View {
     let onStart: () -> Void
     @State private var loginFailed = false
+    @Environment(\.language) private var language
 
     var body: some View {
         StepCard(
-            title: "You're all set",
-            message: "Look for the little aperture in your menu bar. Press ⌥Space in any app to jot down what's going on, especially when something feels tedious. It starts by itself when you log in; pause it from the menu any time."
-                + (loginFailed ? "\n\nmacOS didn't let it open at login: move the app to Applications and open it again." : ""),
-            action: ("Start Journaling", onStart)
+            title: language("You're all set"),
+            message: language("Look for the little aperture in your menu bar. Press ⌥Space in any app to jot down what's going on, especially when something feels tedious. It starts by itself when you log in; pause it from the menu any time.")
+                + (loginFailed ? "\n\n" + language("macOS didn't let it open at login: move the app to Applications and open it again.") : ""),
+            action: (language("Start Journaling"), onStart)
         )
         .task {
             do { try SystemAccess.enableOpenAtLogin() } catch { loginFailed = true }
