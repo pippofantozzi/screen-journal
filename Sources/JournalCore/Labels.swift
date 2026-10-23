@@ -55,11 +55,17 @@ public struct LabelSetup: Codable, Equatable, Sendable {
         return String(decoding: try encoder.encode(self), as: UTF8.self) + "\n"
     }
 
-    /// Her kinds with one more at the end, trimmed; blank or already there (any case) changes nothing.
+    /// Her kinds with one more at the end, trimmed; blank or already included (any case) changes nothing.
     public static func adding(_ kind: String, to tasks: [String]) -> [String] {
         let name = kind.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !tasks.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return tasks }
+        guard !name.isEmpty, included(name, in: tasks) == nil else { return tasks }
         return tasks + [name]
+    }
+
+    /// The default or her kind that already covers this name, any case.
+    public static func included(_ kind: String, in tasks: [String]) -> String? {
+        let name = kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (TaskKind.defaults.map(\.name) + tasks).first { $0.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     /// The defaults, then hers that aren't already there, by lowercased name.

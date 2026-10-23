@@ -50,8 +50,8 @@ struct GuideView: View {
         ], command: "cd ~/ScreenJournal && claude"),
         Page(symbol: "questionmark.circle", tint: .green, title: "If something seems off", points: [
             Point(symbol: "exclamationmark.triangle", text: "macOS sometimes asks again for screen permission. Just allow it."),
-            Point(symbol: "arrow.down.circle", text: "Updates install by themselves. Menu → Advanced → Check for Updates if you're curious."),
-            Point(symbol: "folder", text: "Menu → Advanced → Open Journal Folder shows everything that was saved."),
+            Point(symbol: "arrow.down.circle", text: "Updates install by themselves. Settings → Check for Updates if you're curious."),
+            Point(symbol: "folder", text: "Settings → Open Journal Folder shows everything that was saved."),
             Point(symbol: "heart", text: "Still stuck? Ask Filippo. 💌"),
         ]),
     ]

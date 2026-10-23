@@ -1,7 +1,7 @@
 /// Files the app keeps in the journal root so a Claude Code session there knows how to read it.
 /// Bump `version` whenever the text changes; the app rewrites stale copies on launch.
 public enum JournalGuide {
-    public static let version = 12
+    public static let version = 13
     public static let marker = "<!-- screen-journal-guide v\(version) -->"
     /// A link the app refreshes at every launch to its own binary.
     public static let commandPath = ".claude/sj"
@@ -35,7 +35,7 @@ public enum JournalGuide {
 
     ## Privacy
     - Everything here stays on this Mac. Screenshots and screen text never go to any website, API, or other service.
-      The one exception is `label` (see Labels): it sends their own description of their work, each session's app, window title, duration, a short excerpt of its screen text (keys redacted) and the titles of the windows either side to a hosted decision model (`baseten/mammoth-1` through the Vercel AI Gateway; every request refuses providers that train on prompts). If they turned on "Show screenshots when a window has little text" in Settings → Advanced, sessions with little screen text and nothing redacted go to `typesafe-ai/jev-1.14.0` with their screenshot instead. The key is the one they saved in Settings (the Keychain), or `AI_GATEWAY_API_KEY` in the environment; `label` reads it itself. Never look for it, print it, or ask them to paste it to you: if it's missing, send them to Settings → Advanced. Run it with `--apply` only after they have said yes to that and the yes is recorded under Consent in `profile.md`; `--titles-only` sends no screen text.
+      The one exception is `label` (see Labels): it sends their own description of their work, each session's app, window title, duration, a short excerpt of its screen text (keys redacted) and the titles of the windows either side to a hosted decision model (`baseten/mammoth-1` through the Vercel AI Gateway; every request refuses providers that train on prompts). If they turned on "Show screenshots when a window has little text" in Settings → Connect AI categorization, sessions with little screen text and nothing redacted go to `typesafe-ai/jev-1.14.0` with their screenshot instead. The key is the one they saved in Settings (the Keychain), or `AI_GATEWAY_API_KEY` in the environment; `label` reads it itself. Never look for it, print it, or ask them to paste it to you: if it's missing, send them to Settings → Connect AI categorization. Run it with `--apply` only after they have said yes to that and the yes is recorded under Consent in `profile.md`; `--titles-only` sends no screen text.
     - Keys and tokens in known formats (API keys, access tokens, JWTs) are replaced with `[redacted]` before screen text is written; IDs, hashes and order numbers are kept. Days captured before that change may still hold some: never repeat one, and tell the owner when you see one.
     - Their own work data (dashboards, product metrics, invoices they handle) is fine to summarize. Skip anything personal or medical, and never quote personal banking, card numbers or salaries. Describe money figures without quoting exact amounts unless they ask for them.
     - Other people's messages in chats, mail and any inbox (CRM consoles, support tools) are never quoted or summarized; describe them at window level: who, when, how often.
@@ -522,7 +522,7 @@ public enum JournalGuide {
       <key>StandardErrorPath</key><string>/tmp/screenjournal-autopilot.log</string>
     </dict></plist>
     ```
-    Replace `CLAUDE_PATH`, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.screenjournal.autopilot.plist`. A Mac asleep at 9:00 runs it on wake. To stop: `launchctl bootout gui/$(id -u)/com.screenjournal.autopilot` and delete the file. Labelling on the schedule needs the AI Gateway key saved in Settings → Advanced; without it, the runs skip labelling. Test once by hand with `launchctl kickstart gui/$(id -u)/com.screenjournal.autopilot` and read the log.
+    Replace `CLAUDE_PATH`, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.screenjournal.autopilot.plist`. A Mac asleep at 9:00 runs it on wake. To stop: `launchctl bootout gui/$(id -u)/com.screenjournal.autopilot` and delete the file. Labelling on the schedule needs the AI Gateway key saved in Settings → Connect AI categorization; without it, the runs skip labelling. Test once by hand with `launchctl kickstart gui/$(id -u)/com.screenjournal.autopilot` and read the log.
     """#
 
     static let tidyJournalSkill = #"""

@@ -2,20 +2,24 @@ import JournalCore
 import SwiftUI
 
 /// Type a name and press Return to add it as a tag. Click a tag to edit it; its × deletes it.
+/// The fixed tags come first and can't be changed; typing one of them lights it up instead.
 struct TagField: View {
     @Binding var tags: [String]
+    /// Name and what it means, shown on hover.
+    let fixed: [(name: String, meaning: String)]
     let prompt: String
     @State private var draft = ""
     /// The tag being edited; Return puts it back in the same place.
     @State private var editing: Int?
+    /// The tag she just tried to add again, lit up for a moment.
+    @State private var echoed: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !tags.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(Array(tags.enumerated()), id: \.offset) { index, tag in
-                        chip(tag, at: index)
-                    }
+            FlowLayout(spacing: 6) {
+                ForEach(fixed, id: \.name) { fixedChip($0.name).help($0.meaning) }
+                ForEach(Array(tags.enumerated()), id: \.offset) { index, tag in
+                    chip(tag, at: index)
                 }
             }
             TextField("", text: $draft, prompt: Text(editing == nil ? prompt : "Edit, then press Return"))
@@ -38,21 +42,38 @@ struct TagField: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(Capsule().fill(editing == index ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.18)))
+        .background(Capsule().fill(editing == index || echoed == tag ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.18)))
     }
 
+    private func fixedChip(_ tag: String) -> some View {
+        Text(tag)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().strokeBorder(echoed == tag ? Color.accentColor : Color.secondary.opacity(0.3)))
+            .background(Capsule().fill(echoed == tag ? Color.accentColor.opacity(0.2) : .clear))
+    }
+
+    /// A repeat, even of the tag being edited into another one, lights up the one already there and changes nothing.
     private func commit() {
-        if let index = editing {
-            var rest = tags
-            rest.remove(at: index)
-            let added = LabelSetup.adding(draft, to: rest)
-            if added.count > rest.count { rest.insert(added.last!, at: index) }
-            tags = rest
-        } else {
-            tags = LabelSetup.adding(draft, to: tags)
-        }
+        var others = tags
+        if let editing { others.remove(at: editing) }
+        if let match = LabelSetup.included(draft, in: others) { return echo(match) }
+        let added = LabelSetup.adding(draft, to: others)
+        if let editing, added.count > others.count { others.insert(added.last!, at: editing) }
+        tags = editing == nil ? added : others
         draft = ""
         editing = nil
+    }
+
+    private func echo(_ tag: String) {
+        draft = ""
+        editing = nil
+        withAnimation { echoed = tag }
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation { if echoed == tag { echoed = nil } }
+        }
     }
 
     private func edit(_ index: Int) {

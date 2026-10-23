@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     let model: AppModel
     let noteShortcutWorks: Bool
+    let showGuide: () -> Void
     @AppStorage(Preferences.interval) private var interval = 10.0
     @AppStorage(Preferences.retentionDays) private var retentionDays = 30
     @State private var about = ""
@@ -13,7 +14,7 @@ struct SettingsView: View {
     @State private var newKey = ""
     @State private var keyStatus: KeyStatus = .idle
     /// Closed by default: the key is set up once, usually for her.
-    @State private var showAdvanced = false
+    @State private var showConnect = false
 
     enum KeyStatus: Equatable {
         case idle, checking, works
@@ -23,7 +24,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Every", selection: $interval) {
+                Picker("Take a snapshot every", selection: $interval) {
                     ForEach(Preferences.intervalOptions, id: \.self) { Text("\(Int($0)) seconds").tag($0) }
                 }
                 Stepper("Keep the last \(retentionDays) days", value: $retentionDays, in: 3...180, step: 1)
@@ -38,30 +39,45 @@ struct SettingsView: View {
             Section {
                 TextField("What you do", text: $about, prompt: Text("I do marketing for clients, so Instagram is usually work."), axis: .vertical)
                     .lineLimit(3...6)
-                LabeledContent("Your own kinds of task") {
-                    TagField(tags: $tasks, prompt: "Reels, then Return")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Kinds of task")
+                    TagField(tags: $tasks, fixed: TaskKind.defaults.map { ($0.name, $0.description) }, prompt: "Add your own, then press Return")
                 }
             } header: {
                 Text("Your work")
             } footer: {
-                Text("Helps tell your work from the rest, and sort it. Click a kind to edit it.")
+                Text("Helps tell your work from the rest, and sort it. The outlined kinds are always there; point at one to see what it covers, click one of yours to edit it.")
             }
 
             Section {
-                DisclosureGroup(isExpanded: $showAdvanced) {
+                DisclosureGroup(isExpanded: $showConnect) {
                     keyRow
                     if !keySaved, case .failed(let message) = keyStatus { Text(message).foregroundStyle(.red) }
                     Toggle("Show screenshots when a window has little text", isOn: $look)
-                    Text("Claude uses the key to sort your sessions, without ever seeing it; it stays in this Mac's Keychain. "
+                    Text("The key lets an AI model sort your sessions into kinds of task. It stays in this Mac's Keychain; Claude never sees it. "
                         + "Screenshots help with design tools, photos and video, but they're sent as they are: nothing on them can be hidden.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } label: {
                     // The whole row opens it, not just the chevron.
-                    Text("Advanced")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { withAnimation { showAdvanced.toggle() } }
+                    HStack {
+                        Text("Connect AI categorization")
+                        Spacer()
+                        if keySaved { Text("Connected").foregroundStyle(.secondary) }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation { showConnect.toggle() } }
+                }
+            }
+
+            Section {
+                HStack {
+                    Button("How It Works", action: showGuide)
+                    Button("Open Journal Folder", action: model.openFolder)
+                    Spacer()
+                    if model.updater.isAvailable {
+                        Button("Check for Updates", action: model.updater.checkForUpdates)
+                    }
                 }
             }
         }
@@ -78,7 +94,7 @@ struct SettingsView: View {
                 HStack {
                     keyStatusText
                     Button("Check", action: check).disabled(keyStatus == .checking)
-                    Button("Remove", action: removeKey)
+                    Button("Disconnect", action: removeKey)
                 }
             } else {
                 HStack {

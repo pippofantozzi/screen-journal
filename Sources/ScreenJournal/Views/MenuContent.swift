@@ -42,22 +42,15 @@ struct MenuContent: View {
         // Shows ⌥Space beside the item, so the menu teaches the shortcut that works everywhere.
         Button("Note This Moment…") { windows.showNote() }
             .keyboardShortcut(.space, modifiers: .option)
+        Button("Your Week…") { windows.showWeek() }
+        // One place for everything else, so there's never a second place to look.
         Button("Settings…") { windows.showSettings() }
             .keyboardShortcut(",")
 
         Divider()
 
-        // Everything she rarely needs, one quiet submenu at the bottom.
-        Menu("Advanced") {
-            Button("How Screen Journal Works…") { windows.showGuide() }
-            Button("Open Journal Folder") { model.openFolder() }
-            if model.updater.isAvailable {
-                Button("Check for Updates…") { model.updater.checkForUpdates() }
-            }
-            Divider()
-            Button("Quit Screen Journal") { NSApp.terminate(nil) }
-                .keyboardShortcut("q")
-        }
+        Button("Quit Screen Journal") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 
     private var headline: String {

@@ -78,9 +78,15 @@ final class WindowPresenter {
         }
     }
 
+    func showWeek() {
+        show("week", title: "Your Week", size: CGSize(width: 520, height: 600)) {
+            WeekView(store: self.model.store)
+        }
+    }
+
     func showSettings() {
         show("settings", title: "Screen Journal Settings", size: CGSize(width: 460, height: 590)) {
-            SettingsView(model: self.model, noteShortcutWorks: self.noteShortcutWorks)
+            SettingsView(model: self.model, noteShortcutWorks: self.noteShortcutWorks) { [weak self] in self?.showGuide() }
         }
     }
 

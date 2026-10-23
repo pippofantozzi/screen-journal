@@ -81,6 +81,25 @@ struct JournalStore {
         try setup.file().write(to: labelSetupURL, atomically: true, encoding: .utf8)
     }
 
+    /// Only the derived sessions, without reading a day's frames.
+    func sessions(day: String) throws -> [Session] {
+        try JournalCoding.decodeLines(Session.self, from: read(dayDir(day).appending(path: "sessions.jsonl")))
+    }
+
+    /// The seven days ending on `day` under her current setup; days with nothing on disk count as empty.
+    func weekReport(endingOn day: String) -> Result<WeekReport, LabelError> {
+        labelSetup().flatMap { setup in
+            do {
+                let days = WeekReport.days(endingOn: day)
+                let sessions = try days.flatMap { try self.sessions(day: $0) }
+                let labels = try days.flatMap { try self.labels(day: $0) }
+                return .success(WeekReport(endingOn: day, sessions: sessions, labels: labels, def: setup.def))
+            } catch {
+                return .failure(LabelError(message: "Couldn't read the journal: \(error.localizedDescription)"))
+            }
+        }
+    }
+
     func labels(day: String) throws -> [Label] {
         try JournalCoding.decodeLines(Label.self, from: read(dayDir(day).appending(path: "labels.jsonl")))
     }

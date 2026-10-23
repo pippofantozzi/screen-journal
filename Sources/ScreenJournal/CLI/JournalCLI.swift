@@ -297,7 +297,7 @@ struct JournalCLI {
         let retention = DecisionGateway.zeroRetention ? "zero data retention, no prompt training" : "no prompt training"
         print("Sends, per session: \(sent), to \(DecisionGateway.model) through the Vercel AI Gateway (\(retention)).")
         if asks.contains(where: { $0.screenshot != nil }) {
-            print("Sessions with little screen text and nothing redacted go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Advanced).")
+            print("Sessions with little screen text and nothing redacted go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Connect AI categorization).")
         }
         guard apply else {
             print("\nDry run: nothing sent. Add --apply to label them.\n")
@@ -305,7 +305,7 @@ struct JournalCLI {
             return 0
         }
         guard let gateway = DecisionGateway.configured() else {
-            print("\nNo AI Gateway key: save one in Settings → Advanced, or set \(DecisionGateway.keyName).")
+            print("\nNo AI Gateway key: save one in Settings → Connect AI categorization, or set \(DecisionGateway.keyName).")
             return 1
         }
 

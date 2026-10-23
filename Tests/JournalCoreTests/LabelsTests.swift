@@ -28,6 +28,13 @@ struct LabelSetupTests {
         #expect(LabelSetup.adding("  Newsletters ", to: ["Reels"]) == ["Reels", "Newsletters"])
         #expect(LabelSetup.adding("reels", to: ["Reels"]) == ["Reels"])
         #expect(LabelSetup.adding("  ", to: ["Reels"]) == ["Reels"])
+        #expect(LabelSetup.adding(" Design", to: ["Reels"]) == ["Reels"])
+    }
+
+    @Test func aKindAlreadyIncludedNamesTheChipItMatches() {
+        #expect(LabelSetup.included(" Design ", in: ["Reels"]) == "design")
+        #expect(LabelSetup.included("REELS", in: ["Reels"]) == "Reels")
+        #expect(LabelSetup.included("Newsletters", in: ["Reels"]) == nil)
     }
 
     @Test func editingWhatTheModelIsToldChangesTheDef() {
@@ -133,6 +140,36 @@ struct HandoffTests {
 
     @Test func unlabelledSessionsAreLeftOut() {
         #expect(Labeling.candidates(sessions: [sheet, call], labels: [], def: setup.def).isEmpty)
+    }
+}
+
+struct WeekReportTests {
+    let sheet = session(at: 0, for: 600, app: "Sheets", title: "Invoices")
+    let chat = session(at: 600, for: 30, app: "Slack", title: "Client")
+    let unsorted = session(at: 700, for: 300, app: "Chrome", title: "Tab")
+
+    @Test func theSevenDaysEndingOnADay() {
+        #expect(WeekReport.days(endingOn: "2026-10-23") == ["2026-10-17", "2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23"])
+    }
+
+    @Test func tracksAllTimeAndCountsWhatIsNotSortedYet() {
+        let report = WeekReport(endingOn: "2026-10-23", sessions: [sheet, chat, unsorted],
+                                labels: [label(sheet, automatable: 0.8, task: "admin"), label(chat, automatable: 1, task: "communication")], def: setup.def)
+        #expect(report.first == "2026-10-17" && report.last == "2026-10-23")
+        #expect(report.tracked == 930 && report.unsorted == 300)
+        #expect(report.tasks.map(\.task) == ["admin", "communication"])
+    }
+
+    @Test func suggestsOnlyWindowsWorthAMinuteOfHandoffAtMostThree() {
+        let windows = (0..<5).map { session(at: Double($0) * 1000, for: 600, app: "App\($0)", title: "W") }
+        let report = WeekReport(endingOn: "2026-10-23", sessions: windows + [chat],
+                                labels: windows.map { label($0) } + [label(chat, automatable: 1)], def: setup.def)
+        #expect(report.candidates.count == 3 && !report.candidates.contains { $0.app == "Slack" })
+    }
+
+    @Test func theShareClaudeCouldHelpWithIsOfAllTheTasksTime() {
+        #expect(Labeling.TaskTime(task: "admin", seconds: 600, work: 600, handoff: 240).helpShare == 0.4)
+        #expect(Labeling.TaskTime(task: "leisure", seconds: 0, work: 0, handoff: 0).helpShare == 0)
     }
 }
 
