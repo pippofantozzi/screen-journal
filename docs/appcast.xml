@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.4.1</title>
+      <description><![CDATA[Escolha os tipos de tarefa entre sugestões com um clique, organização duas vezes mais rápida, e ajustes raros agrupados em Avançado]]></description>
+      <pubDate>Fri, 23 Oct 2026 10:51:24 -0300</pubDate>
+      <sparkle:version>19</sparkle:version>
+      <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.4.1/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="PJu3h8v2HquGO3/ZyxpPd6htBTPArtDGZ0oRaF2bJoGA9VvJDDs/o5nGUteR5ZrDdKWLiGtv+U6nhCr0yXBtBw==" length="3688659"/>
+    </item>
+    <item>
       <title>0.4.0</title>
       <description><![CDATA[Organiza suas sessões sozinho a cada hora, com capturas de tela, e mostra as capturas de cada tarefa]]></description>
       <pubDate>Fri, 23 Oct 2026 10:16:41 -0300</pubDate>
