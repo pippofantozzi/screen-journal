@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.4.2</title>
+      <description><![CDATA[Os provedores de IA não guardam nada do que é enviado, e o campo “O que você faz” agora é digitado da esquerda, com espaços visíveis]]></description>
+      <pubDate>Fri, 23 Oct 2026 11:53:23 -0300</pubDate>
+      <sparkle:version>21</sparkle:version>
+      <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.4.2/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="pX25ZT/KRC9E1A6cyn06LboAqK3AKyhgjRcHEQAY1IYgZ8Ff23v9A8Ws5tKj7a5X1BIC0+dnIkXCLU84QpJ0Dg==" length="3690926"/>
+    </item>
+    <item>
       <title>0.4.1</title>
       <description><![CDATA[Escolha os tipos de tarefa entre sugestões com um clique, organização duas vezes mais rápida, e ajustes raros agrupados em Avançado]]></description>
       <pubDate>Fri, 23 Oct 2026 10:51:24 -0300</pubDate>
