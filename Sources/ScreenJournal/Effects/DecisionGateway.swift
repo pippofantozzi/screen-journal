@@ -31,26 +31,32 @@ struct DecisionGateway: Sendable {
         await answers(.probe, kinds: TaskKind.defaults).map { _ in () }
     }
 
-    /// Retries busy and server errors, gives up on the rest. With a screenshot, the vision model answers.
+    /// With a screenshot, the vision model answers.
     func answers(_ state: SessionState, kinds: [TaskKind], screenshot: Data? = nil) async -> Result<SystemOne.Answers, LabelError> {
+        let body: Data
+        do { body = try Self.body(state, kinds: kinds, screenshot: screenshot) } catch { return .failure(LabelError(message: error.localizedDescription)) }
+        return await reply(to: body, withImage: screenshot != nil).flatMap(SystemOne.answers)
+    }
+
+    static func body(_ state: SessionState, kinds: [TaskKind], screenshot: Data?) throws -> Data {
+        try SystemOne.request(model: screenshot == nil ? model : lookModel, state: state, kinds: kinds, zeroRetention: zeroRetention, screenshot: screenshot)
+    }
+
+    /// The raw reply to a request body. Retries busy and server errors, gives up on the rest.
+    func reply(to body: Data, withImage: Bool) async -> Result<Data, LabelError> {
         var request = URLRequest(url: Self.url, timeoutInterval: 60)
         request.httpMethod = "POST"
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if screenshot != nil { request.setValue("true", forHTTPHeaderField: "TypeSafe-Danger-Zone-Images") }
-        do {
-            request.httpBody = try SystemOne.request(model: screenshot == nil ? Self.model : Self.lookModel, state: state, kinds: kinds,
-                                                     zeroRetention: Self.zeroRetention, screenshot: screenshot)
-        } catch {
-            return .failure(LabelError(message: error.localizedDescription))
-        }
+        if withImage { request.setValue("true", forHTTPHeaderField: "TypeSafe-Danger-Zone-Images") }
+        request.httpBody = body
         var last = LabelError(message: "No reply.")
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(for: .seconds(1 << attempt)) }
             guard let (data, response) = try? await URLSession.shared.data(for: request),
                   let status = (response as? HTTPURLResponse)?.statusCode
             else { continue }
-            if status == 200 { return SystemOne.answers(data) }
+            if status == 200 { return .success(data) }
             last = LabelError(message: "\(status) \(String(decoding: data.prefix(200), as: UTF8.self))")
             if status < 500 && status != 429 { break }
         }

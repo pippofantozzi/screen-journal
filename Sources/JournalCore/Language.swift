@@ -53,8 +53,8 @@ public enum Language: String, CaseIterable, Sendable {
         "communication": ("comunicação", "conversas e e-mails com pessoas"),
         "outreach": ("prospecção", "prospectar, vender, postar ou responder ao público"),
         "research": ("pesquisa", "ler, buscar, aprender para uma tarefa"),
-        "admin": ("administrativo", "contas, ajustes, formulários, arquivos, pagamentos"),
-        "building": ("tecnologia", "código, configurar ferramentas, dirigir agentes de código"),
+        "admin": ("administrativo", "contas, ajustes e painéis de qualquer ferramenta, permissões, formulários, arquivos, pagamentos"),
+        "building": ("tecnologia", "escrever código, ou dirigir agentes de código num terminal ou editor"),
         "leisure": ("lazer", "entretenimento, navegação pessoal"),
     ]
 
@@ -113,9 +113,9 @@ public enum Language: String, CaseIterable, Sendable {
         "Disconnect": "Desconectar",
         "Save": "Salvar",
         "The gateway refused this key.": "O gateway recusou esta chave.",
-        "Show screenshots when a window has little text": "Mostrar capturas de tela quando uma janela tem pouco texto",
-        "The key lets an AI model sort your sessions into kinds of task. It stays in this Mac's Keychain; Claude never sees it. Screenshots help with design tools, photos and video, but they're sent as they are: nothing on them can be hidden.":
-            "A chave permite que um modelo de IA organize suas sessões por tipo de tarefa. Ela fica nas Chaves deste Mac; o Claude nunca a vê. Capturas de tela ajudam com ferramentas de design, fotos e vídeo, mas são enviadas como estão: nada nelas pode ser escondido.",
+        "Send screenshots too": "Enviar capturas de tela também",
+        "The key lets an AI model sort your sessions into kinds of task, every hour. It stays in this Mac's Keychain; Claude never sees it. Screenshots make the sorting much more accurate, and they're sent as they are: only a screen showing an API key is held back, and password managers are never captured.":
+            "A chave permite que um modelo de IA organize suas sessões por tipo de tarefa, a cada hora. Ela fica nas Chaves deste Mac; o Claude nunca a vê. Capturas de tela deixam a organização bem mais precisa, e são enviadas como estão: só uma tela que mostra uma chave de API fica de fora, e gerenciadores de senhas nunca são capturados.",
         "How It Works": "Como funciona",
         "Open Journal Folder": "Abrir pasta do diário",
         "Check for Updates": "Buscar atualizações",
@@ -132,6 +132,17 @@ public enum Language: String, CaseIterable, Sendable {
         "Where Claude could help most": "Onde o Claude mais poderia ajudar",
         "Claude could probably take over": "O Claude provavelmente poderia assumir",
         "The rest": "O resto",
+        "See the screenshots": "Ver as capturas",
+        "Click a task to see its screenshots": "Clique numa tarefa para ver as capturas",
+        "All tasks": "Todas as tarefas",
+        "All": "Tudo",
+        "Claude could take over": "O Claude poderia assumir",
+        "%@ sessions · %@": "%@ sessões · %@",
+        "Nothing here with these filters.": "Nada aqui com esses filtros.",
+        "No screenshot kept": "Captura não guardada",
+        "Open it larger": "Abrir maior",
+        "Task": "Tarefa",
+        "Show": "Mostrar",
         "%@: %@, of which Claude could probably take over %@": "%@: %@, dos quais o Claude provavelmente poderia assumir %@",
 
         // Note

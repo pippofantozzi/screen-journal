@@ -122,7 +122,10 @@ final class Recorder {
         let previous = memory[shot.index]
 
         let lines = await TextRecognizer.lines(in: shot.image)
-        let ocr = Secrets.redact(lines.map(\.text).joined(separator: "\n"))
+        // The text is filed under the top window, so it's that window's text; a terminal behind a small dialog isn't.
+        let own = top.map { WindowPlacement.lines(lines, inside: $0.bounds, on: shot.bounds) } ?? lines
+        let ocr = Secrets.redact(own.map(\.text).joined(separator: "\n"))
+        let secretOnScreen = Secrets.redact(lines.map(\.text).joined(separator: "\n")).contains(Secrets.placeholder)
         let title = ChatHeader.title(top?.title, lines: lines)
         let place = await Task.detached { pid.flatMap(WindowContext.place(of:)) }.value
         let day = store.day(of: now)
@@ -141,7 +144,8 @@ final class Recorder {
         open[shot.index] = FrameRecord(
             id: id, start: now, end: now, display: shot.index, focused: focused,
             app: top?.app, bundleID: top?.bundleID, windowTitle: title, place: place, image: image,
-            text: visit == nil && !ocr.isEmpty ? ocr : nil, newLines: newLines.isEmpty ? nil : newLines
+            text: visit == nil && !ocr.isEmpty ? ocr : nil, newLines: newLines.isEmpty ? nil : newLines,
+            secretOnScreen: secretOnScreen ? true : nil
         )
     }
 

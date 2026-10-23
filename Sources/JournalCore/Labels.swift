@@ -20,26 +20,27 @@ public struct TaskKind: Codable, Equatable, Sendable {
 }
 
 /// `labels.json` in the journal root: what the model is told about her work, her task kinds beside the defaults,
-/// and whether screenshots of sessions with little text may be sent.
+/// and whether screenshots may be sent.
 public struct LabelSetup: Codable, Equatable, Sendable {
     /// Her own words, e.g. "I do marketing for clients, so Instagram is usually work."
     public var about: String
     /// Hers, added to `TaskKind.defaults`; a name alone is enough.
     public var tasks: [String]
-    /// Off unless she turns it on: pixels can't be redacted.
-    public var look: Bool
+    /// On unless she turns it off: with the screenshot, four in five sessions were sorted right, against two in three from text alone.
+    /// Never for a session where something on screen was redacted, since pixels can't be.
+    public var screenshots: Bool
 
-    public init(about: String = "", tasks: [String] = [], look: Bool = false) {
+    public init(about: String = "", tasks: [String] = [], screenshots: Bool = true) {
         self.about = about
         self.tasks = tasks
-        self.look = look
+        self.screenshots = screenshots
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         about = try container.decode(String.self, forKey: .about)
         tasks = try container.decode([String].self, forKey: .tasks)
-        look = try container.decodeIfPresent(Bool.self, forKey: .look) ?? false
+        screenshots = try container.decodeIfPresent(Bool.self, forKey: .screenshots) ?? true
     }
 
     public static func parse(_ text: String) -> Result<LabelSetup, LabelError> {
@@ -80,7 +81,7 @@ public struct LabelSetup: Codable, Equatable, Sendable {
 
     /// FNV-1a over everything the model is told: rewording a question or editing `about` or the tasks asks every session again.
     public var def: String {
-        let told = [about, Questions.work, Questions.automatable] + Questions.handoff + kinds.map { "\($0.name):\($0.description)" }
+        let told = [about, Questions.work, Questions.automatable, Questions.task] + Questions.handoff + kinds.map { "\($0.name):\($0.description)" }
         let hash = told.joined(separator: "\u{1}").utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
         return String(format: "%08x", hash)
     }
@@ -96,19 +97,23 @@ extension TaskKind {
         ("communication", "chats and email with people"),
         ("outreach", "prospecting, sales, posting or replying to audiences"),
         ("research", "reading, searching, learning for a task"),
-        ("admin", "accounts, settings, forms, files, payments"),
-        ("building", "code, configuring tools, directing coding agents"),
+        ("admin", "accounts, settings and dashboards of any tool, permissions, forms, files, payments"),
+        ("building", "writing code, or directing coding agents in a terminal or editor"),
         ("leisure", "entertainment, personal browsing"),
     ].map { TaskKind(name: $0.0, description: $0.1) }
 }
 
 /// The three questions asked about every session; tuned on real sessions.
 public enum Questions {
-    static let work = "Is this the person's work, given what they say about their work? Social media, chats and videos can be work."
+    /// "As opposed to" gives it the other side: without it, work hovered near 0.5 whenever her description was missing.
+    static let work = "Is this the person's own work, as opposed to their personal life or leisure? Use what they say about their work. "
+        + "Social media, chats and videos can be work when they're about it."
     static let automatable = "Assume the person has AI agents: Claude Code or Codex with skills and scripts, browser-use and computer-use agents "
         + "that click and type in any app, and scheduled jobs. How much of the person's own effort here could those take over? "
         + "Judge the task, not the app. If an agent already does the work and the person is directing or reviewing it, "
-        + "rate only how much of that directing could be handed off too."
+        + "rate only how much of that directing could be handed off too: answering an agent's question, approving a plan or "
+        + "choosing between options is nothing or a little; telling it to continue, commit or run tests, or watching a build or deploy, "
+        + "is mostly or fully. Leisure, personal chats and an idle screen are nothing: there is no work of theirs to hand off."
     /// Scored 0 to 3; the label keeps it as 0 to 1.
     static let handoff = [
         "nothing: needs their own judgment, taste or presence",
@@ -116,7 +121,9 @@ public enum Questions {
         "mostly: an agent could do it and they review",
         "fully: an agent or script could do it unattended",
     ]
-    static let task = "Which kind of task is the person doing?"
+    static let task = "Which kind of task is the person doing? Judge by what they are doing in the frontmost app, not by what an image "
+        + "on screen shows. Permission prompts and system dialogs are admin. If the screen is blank or still loading, go by the window "
+        + "title and app. A chat with an AI assistant or bot is not communication; communication is with people."
 }
 
 /// The answers about one session, keyed by its start. `agent` rows are corrections and beat the model's;
@@ -166,6 +173,8 @@ public struct SessionState: Encodable, Equatable, Sendable {
     public let screenText: String
     /// Set when the request carries the screenshot; the state then points at it.
     public internal(set) var screenshot = false
+    /// Something on screen was redacted during the session, so its screenshot must not be sent. Not part of the request.
+    public let secretOnScreen: Bool
 
     private enum CodingKeys: String, CodingKey {
         case about = "about_the_person", app, window, seconds = "seconds_on_screen", before, after, screenText = "screen_text", screenshot
@@ -179,17 +188,14 @@ public struct SessionState: Encodable, Equatable, Sendable {
         seconds = Int(session.duration)
         self.before = Self.glance(before)
         self.after = Self.glance(after)
-        guard textLimit > 0 else {
-            screenText = ""
-            return
-        }
-        let lines = frames
-            .filter { $0.focused && $0.bundleID == session.bundleID && $0.start >= session.start && $0.start < session.end }
+        let own = frames.filter { $0.focused && $0.bundleID == session.bundleID && $0.start >= session.start && $0.start < session.end }
+        let lines = own
             .sorted { $0.start < $1.start }
             .flatMap { $0.text.map { $0.components(separatedBy: "\n") } ?? $0.newLines ?? [] }
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         // Again here for frames captured before redaction existed.
         let text = Secrets.redact(lines.joined(separator: "\n"))
+        secretOnScreen = own.contains { $0.secretOnScreen == true } || text.contains(Secrets.placeholder)
         screenText = String(text.prefix(textLimit))
     }
 
@@ -338,12 +344,14 @@ public enum Labeling {
         return sessions.filter { answered[$0.start] == nil }
     }
 
-    /// Screen text shorter than this says too little; the screenshot says more. Design tools, feeds and video mostly.
-    public static let thinText = 120
-
-    /// Worth sending the screenshot: little text to go on, and none of it redacted, since a key on screen would leave as pixels.
+    /// The screenshot may go: nothing on screen was redacted, since a key would leave as pixels.
     public static func wantsLook(_ state: SessionState) -> Bool {
-        state.screenText.count < thinText && !state.screenText.contains(Secrets.placeholder)
+        !state.secretOnScreen
+    }
+
+    /// Sessions over by `now`: one that ended in the last few minutes may still be growing, and its answer would cover part of it.
+    public static func finished(_ sessions: [Session], at now: Date, quiet: TimeInterval = 300) -> [Session] {
+        sessions.filter { $0.end <= now - quiet }
     }
 
     /// Sessions whose standing answer hasn't seen the screenshot yet.

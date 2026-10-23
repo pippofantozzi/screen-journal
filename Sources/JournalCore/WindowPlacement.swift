@@ -59,6 +59,15 @@ public enum WindowPlacement {
         return preferred ?? candidates.first
     }
 
+    /// The lines recognized on `display`'s shot whose center falls inside `window`: its own text, not that of the windows around it.
+    public static func lines(_ lines: [TextLine], inside window: CGRect, on display: CGRect) -> [TextLine] {
+        lines.filter { line in
+            let point = CGPoint(x: display.minX + (line.minX + line.maxX) / 2 * display.width,
+                                y: display.minY + (line.top + line.height / 2) * display.height)
+            return window.contains(point)
+        }
+    }
+
     /// Whether a display shows the same window after its capture as before it,
     /// so the screenshot belongs to the label; a switch mid-capture mixes one window's pixels with another's title.
     public static func settled(before: WindowInfo?, after: WindowInfo?) -> Bool {

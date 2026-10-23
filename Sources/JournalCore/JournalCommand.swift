@@ -46,12 +46,15 @@ public enum JournalCommand: Equatable, Sendable {
     case rebuild
     /// Asks the decision model about sessions not yet answered under the current `labels.json`; `day` nil means every day.
     case label(day: String?, titlesOnly: Bool, apply: Bool)
+    /// Asks the vision model about every session with a screenshot it may see, and keeps each request and reply
+    /// in `out` as an eval case; writes no labels.
+    case cases(day: String?, out: String, apply: Bool)
 
     public struct Usage: Error, Equatable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild", "label"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases"]
 
     static let usage = """
     Usage:
@@ -60,6 +63,7 @@ public enum JournalCommand: Equatable, Sendable {
       ScreenJournal tidy --keep-days 7 [--apply]
       ScreenJournal rebuild
       ScreenJournal label [--day 2026-10-21] [--titles-only] [--apply]
+      ScreenJournal cases --out <folder> [--day 2026-10-21] [--apply]
     """
 
     fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
@@ -67,6 +71,7 @@ public enum JournalCommand: Equatable, Sendable {
         case "forget": forget(&options, timeZone: timeZone)
         case "tidy": tidy(&options)
         case "label": label(&options)
+        case "cases": cases(&options)
         default: .success(.rebuild)
         }
     }
@@ -98,11 +103,22 @@ public enum JournalCommand: Equatable, Sendable {
 
     private static func label(_ options: inout Options) -> Result<JournalCommand, Usage> {
         let apply = options.flag("--apply"), titlesOnly = options.flag("--titles-only")
+        return day(&options).map { .label(day: $0, titlesOnly: titlesOnly, apply: apply) }
+    }
+
+    private static func cases(_ options: inout Options) -> Result<JournalCommand, Usage> {
+        let apply = options.flag("--apply")
+        guard let out = options.take("--out"), !out.isEmpty else { return fail("cases needs --out with a folder to keep them in.") }
+        return day(&options).map { .cases(day: $0, out: out, apply: apply) }
+    }
+
+    /// nil when not given; every day.
+    private static func day(_ options: inout Options) -> Result<String?, Usage> {
         let day = options.take("--day")
         if let day, day.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression) == nil {
-            return fail("--day looks like 2026-10-21.")
+            return .failure(Usage(message: "--day looks like 2026-10-21.\n\n" + usage))
         }
-        return .success(.label(day: day, titlesOnly: titlesOnly, apply: apply))
+        return .success(day)
     }
 
     private static func localDate(_ text: String, _ timeZone: TimeZone) -> Date? {

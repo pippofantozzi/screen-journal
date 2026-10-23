@@ -24,6 +24,7 @@ struct JournalCLI {
         case let .tidy(keepDays, apply): return tidy(keepDays: keepDays, apply: apply)
         case .rebuild: return withAppQuit { rebuild() }
         case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
+        case let .cases(day, out, apply): return cases(day: day, out: URL(filePath: out), apply: apply)
         }
     }
 
@@ -253,20 +254,7 @@ struct JournalCLI {
 
     // MARK: label
 
-    /// One session to ask about, with what the model will see.
-    private struct Ask: Sendable {
-        let day: String
-        let session: Session
-        let state: SessionState
-        /// Sent along, to the vision model, when the text says too little.
-        let screenshot: URL?
-    }
-
-    private struct Answered: Sendable {
-        let ask: Ask
-        let source: Label.Source
-        let answers: Result<SystemOne.Answers, LabelError>
-    }
+    private typealias Ask = SessionSorter.Ask
 
     private func label(day: String?, titlesOnly: Bool, apply: Bool) -> Int32 {
         let setup: LabelSetup
@@ -280,7 +268,8 @@ struct JournalCLI {
             return 1
         }
         let asks: [Ask]
-        do { asks = try days.flatMap { try pending($0, setup: setup, titlesOnly: titlesOnly) } } catch { return failed(error) }
+        let sorter = SessionSorter(store: store), now = Date()
+        do { asks = try days.flatMap { try sorter.pending($0, setup: setup, titlesOnly: titlesOnly, now: now) } } catch { return failed(error) }
 
         print(setup.about.isEmpty ? "No description of her work yet (Settings, or about in labels.json)." : "About her work: \(setup.about)")
         print("Task kinds: \(setup.kinds.map(\.name).joined(separator: ", ")).")
@@ -297,7 +286,7 @@ struct JournalCLI {
         let retention = DecisionGateway.zeroRetention ? "zero data retention, no prompt training" : "no prompt training"
         print("Sends, per session: \(sent), to \(DecisionGateway.model) through the Vercel AI Gateway (\(retention)).")
         if asks.contains(where: { $0.screenshot != nil }) {
-            print("Sessions with little screen text and nothing redacted go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Connect AI categorization).")
+            print("Sessions with nothing redacted on screen go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Connect AI categorization).")
         }
         guard apply else {
             print("\nDry run: nothing sent. Add --apply to label them.\n")
@@ -309,21 +298,13 @@ struct JournalCLI {
             return 1
         }
 
-        let results = blocking { await Self.ask(asks, kinds: setup.kinds, gateway: gateway) }
-        var failures: [String] = []
-        for day in days {
-            let labels = results.filter { $0.ask.day == day }.compactMap { result -> Label? in
-                switch result.answers {
-                case .success(let a):
-                    return Label(session: result.ask.session.start, work: a.work, automatable: a.automatable, task: a.task, def: setup.def, source: result.source)
-                case .failure(let error):
-                    failures.append(error.message)
-                    return nil
-                }
-            }
-            do { try store.append(labels, day: day) } catch { return failed(error) }
+        let outcome: SessionSorter.Outcome
+        switch blocking({ await sorter.sort(asks, setup: setup, gateway: gateway) }) {
+        case .success(let found): outcome = found
+        case .failure(let error): return failed(error)
         }
-        print("\nLabelled \(plural(asks.count - failures.count, "session")).")
+        let failures = outcome.failures
+        print("\nLabelled \(plural(outcome.sorted, "session")).")
         if let first = failures.first {
             print("\(plural(failures.count, "session")) failed (first: \(first)). Run again to retry them.")
         }
@@ -332,44 +313,103 @@ struct JournalCLI {
         return failures.isEmpty ? 0 : 1
     }
 
-    /// Unlabelled sessions, plus, when she allows screenshots, text-only ones the screenshot would tell more about.
-    private func pending(_ day: String, setup: LabelSetup, titlesOnly: Bool) throws -> [Ask] {
-        let rows = try store.rows(day: day), labels = try store.labels(day: day)
+    // MARK: cases
+
+    /// Every session whose screenshot can be sent, whatever its labels say. Nothing redacted, since a key on screen would leave as pixels.
+    private func lookAsks(_ day: String, setup: LabelSetup) throws -> [Ask] {
+        let rows = try store.rows(day: day)
         let sessions = rows.sessions
-        let unlabelled = Set(Labeling.pending(sessions: sessions, labels: labels, def: setup.def).map(\.start))
-        let unseen = setup.look && !titlesOnly ? Set(Labeling.unseen(sessions: sessions, labels: labels, def: setup.def).map(\.start)) : []
-        return sessions.enumerated().compactMap { i, session in
-            guard unlabelled.contains(session.start) || unseen.contains(session.start) else { return nil }
-            let state = SessionState(
-                session, before: i > 0 ? sessions[i - 1] : nil, after: i + 1 < sessions.count ? sessions[i + 1] : nil,
-                about: setup.about, frames: rows.frames, textLimit: titlesOnly ? 0 : 600)
-            let image = store.dayDir(day).appending(path: session.representativeFrame)
-            let look = unseen.contains(session.start) && Labeling.wantsLook(state) && FileManager.default.fileExists(atPath: image.path)
-            guard look || unlabelled.contains(session.start) else { return nil }
-            return Ask(day: day, session: session, state: state, screenshot: look ? image : nil)
+        return sessions.indices.compactMap { i in
+            let state = SessionSorter.state(at: i, of: sessions, frames: rows.frames, setup: setup, textLimit: 600)
+            let image = store.screenshot(of: sessions[i])
+            guard Labeling.wantsLook(state), FileManager.default.fileExists(atPath: image.path) else { return nil }
+            return Ask(day: day, session: sessions[i], state: state, screenshot: image)
         }
     }
 
-    /// Eight requests in flight: each answers one session in under a second.
-    private static func ask(_ asks: [Ask], kinds: [TaskKind], gateway: DecisionGateway) async -> [Answered] {
-        await withTaskGroup(of: Answered.self) { group in
-            var results: [Answered] = []
-            var next = asks.makeIterator()
-            func start() {
-                guard let ask = next.next() else { return }
-                group.addTask {
-                    let screenshot = ask.screenshot.flatMap { ImageCodec.jpeg(at: $0) }
-                    return Answered(ask: ask, source: screenshot == nil ? .model : .look,
-                                    answers: await gateway.answers(ask.state, kinds: kinds, screenshot: screenshot))
-                }
-            }
-            for _ in 0..<8 { start() }
-            for await result in group {
-                results.append(result)
-                start()
-            }
-            return results
+    /// One folder per session: the request as sent (the image beside it as screen.jpg), and the raw reply.
+    /// Holds screenshots and screen text, so it belongs outside any repository.
+    private func cases(day: String?, out: URL, apply: Bool) -> Int32 {
+        let setup: LabelSetup
+        switch store.labelSetup() {
+        case .success(let found): setup = found
+        case .failure(let error): return failed(error)
         }
+        let days = day.map { [$0] } ?? store.dayNames().sorted()
+        let asks: [Ask]
+        do { asks = try days.flatMap { try lookAsks($0, setup: setup) } } catch { return failed(error) }
+        print("\(plural(asks.count, "session")) with a screenshot and nothing redacted, to \(DecisionGateway.lookModel); nothing is labelled.")
+        guard apply else {
+            print("Dry run: nothing sent. Add --apply to ask and keep them in \(out.path).")
+            return 0
+        }
+        guard let gateway = DecisionGateway.configured() else {
+            print("No AI Gateway key: save one in Settings → Connect AI categorization, or set \(DecisionGateway.keyName).")
+            return 1
+        }
+        let kinds = setup.kinds
+        let results = blocking {
+            await withTaskGroup(of: (Ask, Data?, Result<CaseFiles, LabelError>).self) { group in
+                var results: [(Ask, Data?, Result<CaseFiles, LabelError>)] = []
+                var next = asks.makeIterator()
+                func start() {
+                    guard let ask = next.next() else { return }
+                    group.addTask {
+                        guard let jpeg = ask.screenshot.flatMap({ ImageCodec.jpeg(at: $0) }),
+                              let body = try? DecisionGateway.body(ask.state, kinds: kinds, screenshot: jpeg)
+                        else { return (ask, nil, .failure(LabelError(message: "Couldn't read the screenshot."))) }
+                        return (ask, jpeg, await gateway.reply(to: body, withImage: true).map { reply in Self.caseFiles(body: body, reply: reply) })
+                    }
+                }
+                for _ in 0..<8 { start() }
+                for await result in group {
+                    results.append(result)
+                    start()
+                }
+                return results
+            }
+        }
+        var kept = 0, failures: [String] = []
+        for (ask, jpeg, result) in results {
+            switch result {
+            case .success(let files):
+                let folder = out.appending(path: caseName(ask))
+                do {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    try files.request.write(to: folder.appending(path: "request.json"))
+                    try files.reply.write(to: folder.appending(path: "reply.json"))
+                    try jpeg?.write(to: folder.appending(path: "screen.jpg"))
+                    kept += 1
+                } catch { failures.append(error.localizedDescription) }
+            case .failure(let error): failures.append(error.message)
+            }
+        }
+        print("Kept \(plural(kept, "case")) in \(out.path).")
+        if let first = failures.first { print("\(plural(failures.count, "session")) failed (first: \(first)).") }
+        return failures.isEmpty ? 0 : 1
+    }
+
+    private struct CaseFiles: Sendable {
+        let request: Data
+        let reply: Data
+    }
+
+    /// The request without the base64 image, pretty, so a person or a replay can read it.
+    private static func caseFiles(body: Data, reply: Data) -> CaseFiles {
+        func pretty(_ data: Data, dropping key: String? = nil) -> Data {
+            guard var object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return data }
+            if let key { object[key] = nil }
+            return (try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])) ?? data
+        }
+        return CaseFiles(request: pretty(body, dropping: "assets"), reply: pretty(reply))
+    }
+
+    private func caseName(_ ask: Ask) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = store.timeZone
+        formatter.dateFormat = "yyyy-MM-dd'T'HHmmss"
+        return formatter.string(from: ask.session.start)
     }
 
     /// Time per task, then the windows agents could take most time off, across the days.

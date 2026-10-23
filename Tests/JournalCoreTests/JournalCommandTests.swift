@@ -57,7 +57,15 @@ struct JournalCommandTests {
             == .command(.label(day: "2026-10-21", titlesOnly: true, apply: true), root: nil))
     }
 
+    @Test func keepsWhatTheVisionModelSawAndSaidAsEvalCases() {
+        #expect(launch("cases", "--out", "/tmp/cases") == .command(.cases(day: nil, out: "/tmp/cases", apply: false), root: nil))
+        #expect(launch("cases", "--day", "2026-10-21", "--out", "/tmp/cases", "--apply")
+            == .command(.cases(day: "2026-10-21", out: "/tmp/cases", apply: true), root: nil))
+    }
+
     @Test(arguments: [
+        ["cases"],
+        ["cases", "--out", "/tmp/cases", "--day", "today"],
         ["label", "--day", "yesterday"],
         ["label", "--day"],
         ["forget"],

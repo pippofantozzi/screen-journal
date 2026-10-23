@@ -194,6 +194,29 @@ struct WindowPlacementTests {
         #expect(WindowPlacement.topWindow(on: left, among: windows, preferring: "com.apple.mail")?.app == "Mail")
         #expect(WindowPlacement.topWindow(on: left, among: windows, preferring: "com.other")?.app == "Slack")
     }
+
+    func line(_ text: String, x: Double, top: Double) -> TextLine {
+        TextLine(text: text, minX: x, maxX: x + 0.1, top: top, height: 0.02)
+    }
+
+    @Test func keepsTheTextOfTheWindowNotTheOneBehindIt() {
+        // A small Settings window over a full-screen terminal.
+        let settings = CGRect(x: 300, y: 200, width: 400, height: 400)
+        let lines = [line("claude › refactor", x: 0.05, top: 0.1), line("Screen Recording", x: 0.4, top: 0.4), line("$ swift test", x: 0.8, top: 0.9)]
+        #expect(WindowPlacement.lines(lines, inside: settings, on: left).map(\.text) == ["Screen Recording"])
+    }
+
+    @Test func measuresTheWindowAgainstItsOwnDisplay() {
+        let mail = CGRect(x: 1500, y: 0, width: 500, height: 800)
+        let lines = [line("Inbox", x: 0.6, top: 0.1), line("Desktop", x: 0.1, top: 0.1)]
+        #expect(WindowPlacement.lines(lines, inside: mail, on: right).map(\.text) == ["Inbox"])
+    }
+
+    @Test func aWindowCoveringTheDisplayKeepsEverything() {
+        let lines = [line("a", x: 0, top: 0), line("b", x: 0.85, top: 0.95)]
+        let bigger = CGRect(x: -50, y: -50, width: 1200, height: 1000)
+        #expect(WindowPlacement.lines(lines, inside: bigger, on: left) == lines)
+    }
 }
 
 struct SystemAppsTests {

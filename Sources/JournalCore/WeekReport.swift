@@ -10,6 +10,8 @@ public struct WeekReport: Equatable, Sendable {
     public let unsorted: TimeInterval
     public let tasks: [Labeling.TaskTime]
     public let candidates: [Labeling.Candidate]
+    /// Every sorted session with its answer, newest first, for looking at what was on screen.
+    public let sorted: [Screen]
 
     /// A suggestion has to save at least a minute to be worth showing.
     static let worthwhile: TimeInterval = 60
@@ -29,6 +31,40 @@ public struct WeekReport: Equatable, Sendable {
         candidates = Array(Labeling.candidates(sessions: sessions, labels: labels, def: def)
             .filter { $0.handoff >= Self.worthwhile }
             .prefix(Self.suggestions))
+        sorted = sessions.compactMap { session in answered[session.start].map { Screen(session: session, label: $0) } }
+            .sorted { $0.session.start > $1.session.start }
+    }
+
+    /// One sorted session, shown by its screenshot.
+    public struct Screen: Equatable, Sendable {
+        public let session: Session
+        public let label: Label
+
+        public init(session: Session, label: Label) {
+            self.session = session
+            self.label = label
+        }
+
+        /// The same measure as the bars: work Claude could probably take over.
+        public var helpShare: Double { label.automatable * label.work }
+        public var isLikely: Bool { helpShare >= 0.5 }
+    }
+
+    public enum Share: CaseIterable, Sendable {
+        case any, likely, rest
+
+        func admits(_ screen: Screen) -> Bool {
+            switch self {
+            case .any: true
+            case .likely: screen.isLikely
+            case .rest: !screen.isLikely
+            }
+        }
+    }
+
+    /// `task` nil for every task.
+    public func screens(task: String?, share: Share) -> [Screen] {
+        sorted.filter { (task == nil || $0.label.task == task) && share.admits($0) }
     }
 }
 

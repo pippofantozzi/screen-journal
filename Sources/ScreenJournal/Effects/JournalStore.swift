@@ -100,6 +100,11 @@ struct JournalStore {
         }
     }
 
+    /// Where a session's screenshot is; it may be gone once the day passes retention.
+    func screenshot(of session: Session) -> URL {
+        dayDir(day(of: session.start)).appending(path: session.representativeFrame)
+    }
+
     func labels(day: String) throws -> [Label] {
         try JournalCoding.decodeLines(Label.self, from: read(dayDir(day).appending(path: "labels.jsonl")))
     }

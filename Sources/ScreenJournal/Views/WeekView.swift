@@ -7,6 +7,8 @@ struct WeekView: View {
     let store: JournalStore
     @State private var lastDay: String
     @State private var phase: Phase = .loading
+    /// Set while looking at the screenshots behind the numbers.
+    @State private var browsing: ScreensView.Filter?
     @Environment(\.language) private var language
     private let today: String
 
@@ -23,6 +25,16 @@ struct WeekView: View {
     }
 
     var body: some View {
+        if case .loaded(let report) = phase, let filter = browsing {
+            ScreensView(report: report, store: store, filter: Binding { browsing ?? filter } set: { browsing = $0 }) { browsing = nil }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            summary
+        }
+    }
+
+    private var summary: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
             switch phase {
@@ -61,7 +73,7 @@ struct WeekView: View {
                 : language("Screen Journal wasn't recording these days."))
                 .foregroundStyle(.secondary)
         } else {
-            TaskBars(tasks: report.tasks, language: language)
+            TaskBars(tasks: report.tasks, language: language) { browsing = .init(task: $0) }
             if !report.candidates.isEmpty { suggestions(report.candidates) }
         }
         if report.unsorted >= 60, !report.tasks.isEmpty {
@@ -113,6 +125,8 @@ struct WeekView: View {
 private struct TaskBars: View {
     let tasks: [Labeling.TaskTime]
     let language: Language
+    /// nil for every task.
+    let open: (String?) -> Void
 
     var body: some View {
         let longest = tasks.map(\.seconds).max() ?? 1
@@ -128,9 +142,17 @@ private struct TaskBars: View {
                             .foregroundStyle(.secondary)
                             .gridColumnAlignment(.trailing)
                     }
+                    // The whole row opens its screenshots, not just the name.
+                    .contentShape(Rectangle())
+                    .onTapGesture { open(task.task) }
                 }
             }
-            legend
+            HStack {
+                legend
+                Spacer()
+                Button(language("See the screenshots")) { open(nil) }
+                    .help(language("Click a task to see its screenshots"))
+            }
         }
     }
 
@@ -167,9 +189,11 @@ private struct TaskBars: View {
 }
 
 /// Durations and day names the way she reads them.
-private enum Hours {
+enum Hours {
+    /// Under a minute in seconds, so a short session never reads as "0min".
     static func text(_ seconds: TimeInterval, in language: Language) -> String {
-        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .narrow, maximumUnitCount: 2).locale(language.locale))
+        let units: Set<Duration.UnitsFormatStyle.Unit> = seconds < 60 ? [.seconds] : [.hours, .minutes]
+        return Duration.seconds(seconds).formatted(.units(allowed: units, width: .narrow, maximumUnitCount: 2).locale(language.locale))
     }
 
     static func date(_ day: String) -> Date? {

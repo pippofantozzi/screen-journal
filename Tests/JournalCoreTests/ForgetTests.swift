@@ -5,11 +5,11 @@ import Testing
 /// A frame row with full control over what the forget/tidy plans look at.
 func row(_ id: String, at offset: TimeInterval, for duration: TimeInterval = 10, display: Int = 1, focused: Bool = true,
          app: String = "Chrome", title: String? = "Tab", image: String? = nil,
-         text: String? = nil, newLines: [String]? = nil) -> FrameRecord {
+         text: String? = nil, newLines: [String]? = nil, secretOnScreen: Bool? = nil) -> FrameRecord {
     FrameRecord(
         id: id, start: base + offset, end: base + offset + duration, display: display, focused: focused,
         app: app, bundleID: "id.\(app)", windowTitle: title, image: image ?? "frames/\(id).heic",
-        text: text, newLines: newLines
+        text: text, newLines: newLines, secretOnScreen: secretOnScreen
     )
 }
 

@@ -58,6 +58,8 @@ final class AppModel {
     private var loop: Task<Void, Never>?
     private var lastSummary = Date.distantPast
     private var lastCatchUp = Date()
+    private var lastSort = Date.distantPast
+    private var isSorting = false
     private var tallyDay = ""
     private var lastSized = Date.distantPast
     private var appSwitchToken: NSObjectProtocol?
@@ -188,8 +190,9 @@ final class AppModel {
         bytesToday = store.size(day: today)
     }
 
-    /// Today's summary every 15 minutes; the launch catch-up hourly.
+    /// Today's summary every 15 minutes; the launch catch-up and sorting hourly.
     private func housekeepIfDue() {
+        sortIfDue()
         if Date().timeIntervalSince(lastSummary) > 15 * 60 {
             lastSummary = Date()
             try? store.summarize(day: store.day(of: Date()))
@@ -197,6 +200,19 @@ final class AppModel {
         if Date().timeIntervalSince(lastCatchUp) > 3600 {
             lastCatchUp = Date()
             catchUp()
+        }
+    }
+
+    /// Sorts the recent week's finished sessions, on the first tick and then hourly, once a key is saved.
+    /// What fails stays unsorted and is asked again next time.
+    private func sortIfDue() {
+        guard !isSorting, Date().timeIntervalSince(lastSort) > 3600, let gateway = DecisionGateway.configured() else { return }
+        lastSort = Date()
+        isSorting = true
+        let sorter = SessionSorter(store: store)
+        Task {
+            _ = await sorter.sortRecent(gateway: gateway, now: Date())
+            isSorting = false
         }
     }
 

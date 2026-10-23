@@ -19,9 +19,11 @@ public struct FrameRecord: Codable, Equatable, Sendable {
     public let text: String?
     /// Lines not on screen in the previous record on this display. Nil when `text` is set.
     public let newLines: [String]?
+    /// True when something on the whole shot was redacted, in this window or one around it: the image then stays on the Mac.
+    public let secretOnScreen: Bool?
 
     public init(id: String, start: Date, end: Date, display: Int, focused: Bool, app: String?, bundleID: String?,
-                windowTitle: String?, place: String? = nil, image: String, text: String?, newLines: [String]?) {
+                windowTitle: String?, place: String? = nil, image: String, text: String?, newLines: [String]?, secretOnScreen: Bool? = nil) {
         self.id = id
         self.start = start
         self.end = end
@@ -34,6 +36,7 @@ public struct FrameRecord: Codable, Equatable, Sendable {
         self.image = image
         self.text = text
         self.newLines = newLines
+        self.secretOnScreen = secretOnScreen
     }
 
     public var duration: TimeInterval { end.timeIntervalSince(start) }
@@ -41,7 +44,7 @@ public struct FrameRecord: Codable, Equatable, Sendable {
     /// The same row showing a different image.
     func pointing(at image: String) -> FrameRecord {
         FrameRecord(id: id, start: start, end: end, display: display, focused: focused, app: app, bundleID: bundleID,
-                    windowTitle: windowTitle, place: place, image: image, text: text, newLines: newLines)
+                    windowTitle: windowTitle, place: place, image: image, text: text, newLines: newLines, secretOnScreen: secretOnScreen)
     }
 }
 

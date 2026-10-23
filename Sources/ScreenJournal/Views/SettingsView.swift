@@ -11,7 +11,7 @@ struct SettingsView: View {
     @Environment(\.language) private var language
     @State private var about = ""
     @State private var tasks: [String] = []
-    @State private var look = false
+    @State private var screenshots = true
     @State private var keySaved = GatewayKey.isSaved
     @State private var newKey = ""
     @State private var keyStatus: KeyStatus = .idle
@@ -56,8 +56,8 @@ struct SettingsView: View {
                 DisclosureGroup(isExpanded: $showConnect) {
                     keyRow
                     if !keySaved, case .failed(let message) = keyStatus { Text(message).foregroundStyle(.red) }
-                    Toggle(language("Show screenshots when a window has little text"), isOn: $look)
-                    Text(language("The key lets an AI model sort your sessions into kinds of task. It stays in this Mac's Keychain; Claude never sees it. Screenshots help with design tools, photos and video, but they're sent as they are: nothing on them can be hidden."))
+                    Toggle(language("Send screenshots too"), isOn: $screenshots)
+                    Text(language("The key lets an AI model sort your sessions into kinds of task, every hour. It stays in this Mac's Keychain; Claude never sees it. Screenshots make the sorting much more accurate, and they're sent as they are: only a screen showing an API key is held back, and password managers are never captured."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } label: {
@@ -92,7 +92,7 @@ struct SettingsView: View {
         .onAppear(perform: load)
         .onChange(of: about) { save() }
         .onChange(of: tasks) { save() }
-        .onChange(of: look) { save() }
+        .onChange(of: screenshots) { save() }
     }
 
     private var keyRow: some View {
@@ -159,10 +159,10 @@ struct SettingsView: View {
         guard case .success(let setup) = model.store.labelSetup() else { return }
         about = setup.about
         tasks = setup.tasks
-        look = setup.look
+        screenshots = setup.screenshots
     }
 
     private func save() {
-        try? model.store.save(LabelSetup(about: about.trimmingCharacters(in: .whitespacesAndNewlines), tasks: tasks, look: look))
+        try? model.store.save(LabelSetup(about: about.trimmingCharacters(in: .whitespacesAndNewlines), tasks: tasks, screenshots: screenshots))
     }
 }

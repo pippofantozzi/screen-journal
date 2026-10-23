@@ -44,15 +44,19 @@ struct LabelSetupTests {
         #expect(setup.def.count == 8)
     }
 
-    @Test func lookingIsOffUnlessTurnedOnAndAsksNothingNew() {
+    @Test func screenshotsAreOnUnlessTurnedOffAndAskNothingNew() {
+        #expect(LabelSetup().screenshots)
         #expect(LabelSetup.parse(#"{"about": "", "tasks": []}"#) == .success(LabelSetup()))
-        #expect(LabelSetup(about: setup.about, tasks: setup.tasks, look: true).def == setup.def)
+        // The old setting only covered windows with little text, and was saved off by default: it doesn't carry over.
+        #expect(LabelSetup.parse(#"{"about": "", "tasks": [], "look": false}"#) == .success(LabelSetup()))
+        #expect(LabelSetup.parse(#"{"about": "", "tasks": [], "screenshots": false}"#) == .success(LabelSetup(screenshots: false)))
+        #expect(LabelSetup(about: setup.about, tasks: setup.tasks, screenshots: false).def == setup.def)
     }
 
     @Test func roundTripsThroughTheFile() throws {
         #expect(LabelSetup.parse(try setup.file()) == .success(setup))
-        let looking = LabelSetup(about: setup.about, tasks: setup.tasks, look: true)
-        #expect(LabelSetup.parse(try looking.file()) == .success(looking))
+        let textOnly = LabelSetup(about: setup.about, tasks: setup.tasks, screenshots: false)
+        #expect(LabelSetup.parse(try textOnly.file()) == .success(textOnly))
         guard case .failure(let error) = LabelSetup.parse("not json") else { Issue.record("accepted"); return }
         #expect(error.message.contains("labels.json"))
     }
@@ -99,10 +103,23 @@ struct CurrentLabelTests {
 struct LookTests {
     let a = session(at: 0), b = session(at: 100), c = session(at: 200), d = session(at: 300)
 
-    @Test func looksWhereTheTextIsThinAndNothingWasRedacted() {
+    @Test func looksUnlessSomethingWasRedacted() {
         #expect(Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: "Canva")])))
-        #expect(!Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: String(repeating: "word ", count: 30))])))
+        #expect(Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: String(repeating: "word ", count: 30))])))
         #expect(!Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: fakeStripeKey)])))
+    }
+
+    @Test func aSessionThatMayStillBeGoingWaits() {
+        let now = base + 1000
+        let sessions = [session(at: 0, for: 600), session(at: 600, for: 300), session(at: 900, for: 90)]
+        #expect(Labeling.finished(sessions, at: now) == [sessions[0]])
+    }
+
+    @Test func neverLooksWhenAKeyWasHiddenAnywhereOnScreen() {
+        // Its own text is clean, but a terminal behind it showed a key: the pixels would carry it.
+        #expect(!Labeling.wantsLook(SessionState(a, frames: [row("x", at: 0, text: "Canva", secretOnScreen: true)])))
+        // Past the text limit, or with no text sent at all, it still counts.
+        #expect(SessionState(a, frames: [row("x", at: 0, text: "Canva\n" + fakeStripeKey)], textLimit: 0).secretOnScreen)
     }
 
     @Test func sessionsNotYetSeenAreUnlabelledOrTextOnly() {
@@ -170,6 +187,42 @@ struct WeekReportTests {
     @Test func theShareClaudeCouldHelpWithIsOfAllTheTasksTime() {
         #expect(Labeling.TaskTime(task: "admin", seconds: 600, work: 600, handoff: 240).helpShare == 0.4)
         #expect(Labeling.TaskTime(task: "leisure", seconds: 0, work: 0, handoff: 0).helpShare == 0)
+    }
+}
+
+struct WeekScreensTests {
+    let invoice = session(at: 0, for: 600, app: "Sheets", title: "Invoices")
+    let reel = session(at: 600, for: 300, app: "CapCut", title: "Reel")
+    let feed = session(at: 900, for: 120, app: "Instagram", title: "Feed")
+    let unsorted = session(at: 1200, for: 60)
+
+    var report: WeekReport {
+        WeekReport(endingOn: "2026-10-23", sessions: [invoice, reel, feed, unsorted], labels: [
+            label(invoice, automatable: 0.8, task: "admin"),
+            label(reel, automatable: 0.2, task: "content"),
+            label(feed, work: 0.25, automatable: 1, task: "leisure"),
+        ], def: setup.def)
+    }
+
+    @Test func showsSortedSessionsNewestFirst() {
+        #expect(report.screens(task: nil, share: .any).map(\.session) == [feed, reel, invoice])
+    }
+
+    @Test func narrowsToOneTask() {
+        #expect(report.screens(task: "content", share: .any).map(\.session) == [reel])
+    }
+
+    @Test func splitsByWhetherClaudeCouldProbablyTakeItOver() {
+        #expect(report.screens(task: nil, share: .likely).map(\.session) == [invoice])
+        #expect(report.screens(task: nil, share: .rest).map(\.session) == [feed, reel])
+    }
+
+    @Test func theShareCountsWorkOnlyLikeTheBars() {
+        #expect(report.screens(task: "leisure", share: .any).first?.helpShare == 0.25)
+    }
+
+    @Test func halfIsEnoughToCountAsLikely() {
+        #expect(WeekReport.Screen(session: invoice, label: label(invoice, automatable: 0.5)).isLikely)
     }
 }
 

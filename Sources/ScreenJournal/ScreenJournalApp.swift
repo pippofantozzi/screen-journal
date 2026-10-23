@@ -80,7 +80,7 @@ final class WindowPresenter {
     }
 
     func showWeek() {
-        show("week", title: language("Your Week"), size: CGSize(width: 520, height: 600)) {
+        show("week", title: language("Your Week"), size: CGSize(width: 600, height: 680)) {
             WeekView(store: self.model.store)
         }
     }
