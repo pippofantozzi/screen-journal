@@ -19,33 +19,49 @@ public struct TaskKind: Codable, Equatable, Sendable {
     }
 }
 
-/// `labels.json` in the journal root: what the model is told about her work, her task kinds beside the defaults,
+/// `labels.json` in the journal root: what the model is told about her work, the task kinds she picked,
 /// and whether screenshots may be sent.
 public struct LabelSetup: Codable, Equatable, Sendable {
     /// Her own words, e.g. "I do marketing for clients, so Instagram is usually work."
     public var about: String
-    /// Hers, added to `TaskKind.defaults`; a name alone is enough.
-    public var tasks: [String]
+    /// The suggestions she clicked, under their English names, and her own; a name alone is enough.
+    /// The fewer, the sharper the sorting.
+    public var picked: [String]
     /// On unless she turns it off: with the screenshot, four in five sessions were sorted right, against two in three from text alone.
     /// Never for a session where something on screen was redacted, since pixels can't be.
     public var screenshots: Bool
 
-    public init(about: String = "", tasks: [String] = [], screenshots: Bool = true) {
+    public init(about: String = "", picked: [String] = [], screenshots: Bool = true) {
         self.about = about
-        self.tasks = tasks
+        self.picked = picked
         self.screenshots = screenshots
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         about = try container.decode(String.self, forKey: .about)
-        tasks = try container.decode([String].self, forKey: .tasks)
+        picked = try container.decodeIfPresent([String].self, forKey: .picked)
+            ?? Self.picked(fromOldTasks: try container.decodeIfPresent([String].self, forKey: .tasks) ?? [])
         screenshots = try container.decodeIfPresent(Bool.self, forKey: .screenshots) ?? true
+    }
+
+    private enum CodingKeys: String, CodingKey { case about, picked, tasks, screenshots }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(about, forKey: .about)
+        try container.encode(picked, forKey: .picked)
+        try container.encode(screenshots, forKey: .screenshots)
+    }
+
+    /// Old files listed her own kinds beside suggestions that were always on: they keep every one.
+    private static func picked(fromOldTasks tasks: [String]) -> [String] {
+        tasks.isEmpty ? [] : TaskKind.suggestions.map(\.name) + tasks
     }
 
     public static func parse(_ text: String) -> Result<LabelSetup, LabelError> {
         guard let setup = try? JSONDecoder().decode(LabelSetup.self, from: Data(text.utf8)) else {
-            return .failure(LabelError(message: #"labels.json isn't valid: expected {"about": "…", "tasks": ["…"]}."#))
+            return .failure(LabelError(message: #"labels.json isn't valid: expected {"about": "…", "picked": ["…"]}."#))
         }
         return .success(setup)
     }
@@ -56,27 +72,27 @@ public struct LabelSetup: Codable, Equatable, Sendable {
         return String(decoding: try encoder.encode(self), as: UTF8.self) + "\n"
     }
 
-    /// Her kinds with one more at the end, trimmed; blank or already included (any case) changes nothing.
-    public static func adding(_ kind: String, to tasks: [String]) -> [String] {
+    /// Her picks with one more at the end, trimmed, a suggestion under its own name; blank or already there (any case) changes nothing.
+    public static func adding(_ kind: String, to picked: [String]) -> [String] {
         let name = kind.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, included(name, in: tasks) == nil else { return tasks }
-        return tasks + [name]
+        guard !name.isEmpty, included(name, in: picked) == nil else { return picked }
+        return picked + [TaskKind.suggestion(named: name)?.name ?? name]
     }
 
-    /// The default or her kind that already covers this name, any case.
-    public static func included(_ kind: String, in tasks: [String]) -> String? {
+    /// The pick, or `other`, that already covers this name, any case.
+    public static func included(_ kind: String, in picked: [String]) -> String? {
         let name = kind.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (TaskKind.defaults.map(\.name) + tasks).first { $0.caseInsensitiveCompare(name) == .orderedSame }
+        return (picked + [TaskKind.other.name]).first { $0.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    /// The defaults, then hers that aren't already there, by lowercased name.
+    /// What the model chooses among: her picks once each by lowercased name, every suggestion until she picks, then `other`.
     public var kinds: [TaskKind] {
-        var seen = Set(TaskKind.defaults.map(\.name))
-        let hers = tasks
+        var seen = Set([TaskKind.other.name])
+        let hers = picked
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
-            .map { TaskKind(name: $0, description: $0) }
-        return TaskKind.defaults + hers
+            .map { TaskKind.suggestion(named: $0) ?? TaskKind(name: $0, description: $0) }
+        return (hers.isEmpty ? TaskKind.suggestions : hers) + [TaskKind.other]
     }
 
     /// FNV-1a over everything the model is told: rewording a question or editing `about` or the tasks asks every session again.
@@ -89,7 +105,7 @@ public struct LabelSetup: Codable, Equatable, Sendable {
 
 extension TaskKind {
     /// What the work is, not how an agent would do it: that is `automatable`'s question.
-    public static let defaults: [TaskKind] = [
+    public static let suggestions: [TaskKind] = [
         ("design", "visual design, images, video, layouts"),
         ("content", "writing or editing posts, captions, docs, copy"),
         ("planning", "plans, calendars, briefs, deciding what to do"),
@@ -101,6 +117,13 @@ extension TaskKind {
         ("building", "writing code, or directing coding agents in a terminal or editor"),
         ("leisure", "entertainment, personal browsing"),
     ].map { TaskKind(name: $0.0, description: $0.1) }
+
+    /// Always there, so a session that fits none of her picks isn't forced into one.
+    public static let other = TaskKind(name: "other", description: "anything that fits none of the others")
+
+    public static func suggestion(named name: String) -> TaskKind? {
+        suggestions.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
 }
 
 /// The three questions asked about every session; tuned on real sessions.
@@ -349,8 +372,11 @@ public enum Labeling {
         !state.secretOnScreen
     }
 
+    /// How long after its last frame a session counts as over.
+    public static let quiet: TimeInterval = 300
+
     /// Sessions over by `now`: one that ended in the last few minutes may still be growing, and its answer would cover part of it.
-    public static func finished(_ sessions: [Session], at now: Date, quiet: TimeInterval = 300) -> [Session] {
+    public static func finished(_ sessions: [Session], at now: Date, quiet: TimeInterval = quiet) -> [Session] {
         sessions.filter { $0.end <= now - quiet }
     }
 

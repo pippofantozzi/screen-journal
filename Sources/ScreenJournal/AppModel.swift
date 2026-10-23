@@ -60,6 +60,8 @@ final class AppModel {
     private var lastCatchUp = Date()
     private var lastSort = Date.distantPast
     private var isSorting = false
+    /// Past days already fully sorted, so an hourly run reads only what can still change.
+    private var settled: Set<SessionSorter.Settled> = []
     private var tallyDay = ""
     private var lastSized = Date.distantPast
     private var appSwitchToken: NSObjectProtocol?
@@ -210,10 +212,18 @@ final class AppModel {
         lastSort = Date()
         isSorting = true
         let sorter = SessionSorter(store: store)
+        let settled = settled
         Task {
-            _ = await sorter.sortRecent(gateway: gateway, now: Date())
+            if case .success(let outcome) = await sorter.sortRecent(gateway: gateway, now: Date(), skipping: settled) {
+                self.settled.formUnion(outcome.settled)
+            }
             isSorting = false
         }
+    }
+
+    /// Settings changed what the model is told: sort again in two minutes, once she's likely done editing.
+    func sortAfterEdits() {
+        lastSort = Date().addingTimeInterval(-3600 + 120)
     }
 
     /// Summarizes days missed while the Mac was off, and applies retention.

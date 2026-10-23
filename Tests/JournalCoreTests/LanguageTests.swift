@@ -25,8 +25,8 @@ struct LanguageTests {
         }
     }
 
-    @Test func theDefaultKindsReadInPortugueseButStayEnglishInTheJournal() {
-        for kind in TaskKind.defaults {
+    @Test func theSuggestedKindsReadInPortugueseButStayEnglishInTheJournal() {
+        for kind in TaskKind.suggestions + [TaskKind.other] {
             #expect(Language.portugueseKinds[kind.name] != nil, "\(kind.name)")
         }
         #expect(Language.portuguese.name(ofKind: "meeting") == "reunião")

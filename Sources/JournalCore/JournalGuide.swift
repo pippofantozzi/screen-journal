@@ -33,11 +33,11 @@ public enum JournalGuide {
     This folder is a passive record of one person's computer work, captured by the Screen Journal app on this Mac.
     The person talking to you is its owner. Read `profile.md` first when it exists: who they are, what they work on, the people and tools involved, and what they have agreed to. Without it, assume they are not a developer: speak plainly and skip jargon. Either way, say what you are about to do before running anything that deletes or changes files, and call the owner "they" unless the profile says otherwise.
 
-    The app may be in Portuguese (the default). When you point them to it, use the names they see: Settings is Ajustes, Connect AI categorization is Conectar categorização por IA, Keep the last N days is Manter os últimos N dias, task kinds are Tipos de tarefa. The journal itself (kinds, labels, files) stays in English.
+    The app may be in Portuguese (the default). When you point them to it, use the names they see: Settings is Ajustes, Advanced is Avançado, Keep the last N days is Manter os últimos N dias, task kinds are Tipos de tarefa. The journal itself (kinds, labels, files) stays in English.
 
     ## Privacy
     - Everything here stays on this Mac. Screenshots and screen text never go to any website, API, or other service.
-      The one exception is `label` (see Labels): it sends their own description of their work, each session's app, window title, duration, a short excerpt of its screen text (keys redacted) and the titles of the windows either side to a hosted decision model (`baseten/mammoth-1` through the Vercel AI Gateway; every request refuses providers that train on prompts). Unless they turned off "Send screenshots too" in Settings → Connect AI categorization, sessions with nothing redacted on screen go to `typesafe-ai/jev-1.14.0` with their screenshot instead. Once they save a key in Settings, the app runs the same labelling itself every hour on the last week, so most sessions are already labelled when you arrive. The key is the one they saved in Settings (the Keychain), or `AI_GATEWAY_API_KEY` in the environment; `label` reads it itself. Never look for it, print it, or ask them to paste it to you: if it's missing, send them to Settings → Connect AI categorization. Run it with `--apply` only after they have said yes to that and the yes is recorded under Consent in `profile.md`; `--titles-only` sends no screen text.
+      The one exception is `label` (see Labels): it sends their own description of their work, each session's app, window title, duration, a short excerpt of its screen text (keys redacted) and the titles of the windows either side to a hosted decision model (`baseten/mammoth-1` through the Vercel AI Gateway; every request refuses providers that train on prompts). Unless they turned off "Send screenshots too" in Settings → Advanced, sessions with nothing redacted on screen go to `typesafe-ai/jev-1.14.0` with their screenshot instead. Once they save a key in Settings, the app runs the same labelling itself every hour on the last week, so most sessions are already labelled when you arrive. The key is the one they saved in Settings (the Keychain), or `AI_GATEWAY_API_KEY` in the environment; `label` reads it itself. Never look for it, print it, or ask them to paste it to you: if it's missing, send them to Settings → Advanced. Run it with `--apply` only after they have said yes to that and the yes is recorded under Consent in `profile.md`; `--titles-only` sends no screen text.
     - Keys and tokens in known formats (API keys, access tokens, JWTs) are replaced with `[redacted]` before screen text is written; IDs, hashes and order numbers are kept. Days captured before that change may still hold some: never repeat one, and tell the owner when you see one.
     - Their own work data (dashboards, product metrics, invoices they handle) is fine to summarize. Skip anything personal or medical, and never quote personal banking, card numbers or salaries. Describe money figures without quoting exact amounts unless they ask for them.
     - Other people's messages in chats, mail and any inbox (CRM consoles, support tools) are never quoted or summarized; describe them at window level: who, when, how often.
@@ -77,7 +77,7 @@ public enum JournalGuide {
       frames.jsonl          one row per distinct screen state per display (below)
       events.jsonl          one row per event (below)
       frames/HHMMSS-dN.heic screenshot of display N
-    labels.json             `about` (their words about their work) and `tasks` (their task kinds), both set in Settings (see Labels)
+    labels.json             `about` (their words about their work) and `picked` (the task kinds they chose: suggestions and their own), both set in Settings (see Labels)
     days/YYYY-MM-DD/labels.jsonl   the model's answers per session (see Labels)
     .claude/journal.jq      shared jq helpers for the recipes below
     ```
@@ -107,7 +107,7 @@ public enum JournalGuide {
     - `session`: that session's `start`.
     - `work`: probability it is their work, judged against `about` (a client's Instagram can be work).
     - `automatable`: 0 to 1, how much of their effort agents could take over: 0 needs them, 1 could run unattended. Asked as if they had coding agents with skills and scripts, browser-use and computer-use agents, and scheduled jobs.
-    - `task`: one kind from the defaults (design, content, planning, meeting, communication, outreach, research, admin, building, leisure) plus `tasks` in `labels.json`.
+    - `task`: one of `picked` in `labels.json`, or `other` when none fits. With nothing picked, the suggestions are used: design, content, planning, meeting, communication, outreach, research, admin, building, leisure.
     - `def`: fingerprint of everything the model was told; editing `about` or `tasks` asks every session again.
     - `source`: `model` (text only), `look` (answered with the screenshot), or `agent` for your corrections.
 
@@ -524,7 +524,7 @@ public enum JournalGuide {
       <key>StandardErrorPath</key><string>/tmp/screenjournal-autopilot.log</string>
     </dict></plist>
     ```
-    Replace `CLAUDE_PATH`, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.screenjournal.autopilot.plist`. A Mac asleep at 9:00 runs it on wake. To stop: `launchctl bootout gui/$(id -u)/com.screenjournal.autopilot` and delete the file. Labelling on the schedule needs the AI Gateway key saved in Settings → Connect AI categorization; without it, the runs skip labelling. Test once by hand with `launchctl kickstart gui/$(id -u)/com.screenjournal.autopilot` and read the log.
+    Replace `CLAUDE_PATH`, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.screenjournal.autopilot.plist`. A Mac asleep at 9:00 runs it on wake. To stop: `launchctl bootout gui/$(id -u)/com.screenjournal.autopilot` and delete the file. Labelling on the schedule needs the AI Gateway key saved in Settings → Advanced; without it, the runs skip labelling. Test once by hand with `launchctl kickstart gui/$(id -u)/com.screenjournal.autopilot` and read the log.
     """#
 
     static let tidyJournalSkill = #"""

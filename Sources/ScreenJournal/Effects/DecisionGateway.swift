@@ -28,7 +28,7 @@ struct DecisionGateway: Sendable {
 
     /// One throwaway question, so Settings can say whether the key works.
     func check() async -> Result<Void, LabelError> {
-        await answers(.probe, kinds: TaskKind.defaults).map { _ in () }
+        await answers(.probe, kinds: LabelSetup().kinds).map { _ in () }
     }
 
     /// With a screenshot, the vision model answers.

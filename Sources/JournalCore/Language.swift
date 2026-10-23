@@ -30,7 +30,7 @@ public enum Language: String, CaseIterable, Sendable {
         String(format: self(english), locale: locale, arguments: blanks)
     }
 
-    /// A default kind's name in this language; her own kinds read as she typed them.
+    /// A suggested kind's name in this language; her own kinds read as she typed them.
     public func name(ofKind kind: String) -> String {
         switch self {
         case .portuguese: Self.portugueseKinds[kind]?.name ?? kind
@@ -56,6 +56,7 @@ public enum Language: String, CaseIterable, Sendable {
         "admin": ("administrativo", "contas, ajustes e painéis de qualquer ferramenta, permissões, formulários, arquivos, pagamentos"),
         "building": ("tecnologia", "escrever código, ou dirigir agentes de código num terminal ou editor"),
         "leisure": ("lazer", "entretenimento, navegação pessoal"),
+        "other": ("outro", "qualquer coisa que não cabe nos outros"),
     ]
 
     static let portuguesePhrases: [String: String] = [
@@ -102,10 +103,13 @@ public enum Language: String, CaseIterable, Sendable {
         "Edit, then press Return": "Edite e pressione Return",
         "Delete %@": "Apagar %@",
         "Your work": "Seu trabalho",
-        "Helps tell your work from the rest, and sort it. The outlined kinds are always there; point at one to see what it covers, click one of yours to edit it.":
-            "Ajuda a separar seu trabalho do resto e a organizá-lo. Os tipos com contorno estão sempre lá; passe o mouse sobre um para ver o que ele inclui, clique em um dos seus para editá-lo.",
-        "Connect AI categorization": "Conectar categorização por IA",
-        "Connected": "Conectado",
+        "Helps tell your work from the rest, and sort it. Pick only the kinds that fit your work: the fewer, the sharper the sorting. Anything that fits none goes under “other”. Point at a kind to see what it covers.":
+            "Ajuda a separar seu trabalho do resto e a organizá-lo. Escolha só os tipos que combinam com o seu trabalho: quanto menos, mais precisa a organização. O que não couber em nenhum vai para “outro”. Aponte para um tipo para ver o que ele abrange.",
+        "None picked yet, so every suggestion is used.": "Nenhum escolhido ainda, então todas as sugestões são usadas.",
+        "Suggestions: click to add": "Sugestões: clique para adicionar",
+        "Add %@": "Adicionar %@",
+        "Advanced": "Avançado",
+        "AI connected": "IA conectada",
         "AI Gateway key": "Chave do AI Gateway",
         "Saved": "Salva",
         "Works": "Funciona",
@@ -195,8 +199,8 @@ public enum Language: String, CaseIterable, Sendable {
             "O Claude lê seu diário, sugere automações e pode criar as que você escolher.",
         "If something seems off": "Se algo parecer estranho",
         "macOS sometimes asks again for screen permission. Just allow it.": "Às vezes o macOS pede de novo a permissão de tela. É só permitir.",
-        "Updates install by themselves. Settings → Check for Updates if you're curious.":
-            "As atualizações se instalam sozinhas. Ajustes → Buscar atualizações, se tiver curiosidade.",
+        "Updates install by themselves. Settings → Advanced → Check for Updates if you're curious.":
+            "As atualizações se instalam sozinhas. Ajustes → Avançado → Buscar atualizações, se tiver curiosidade.",
         "Settings → Open Journal Folder shows everything that was saved.": "Ajustes → Abrir pasta do diário mostra tudo o que foi salvo.",
         "Still stuck? Ask Filippo. 💌": "Ainda com dúvida? Pergunte ao Filippo. 💌",
 

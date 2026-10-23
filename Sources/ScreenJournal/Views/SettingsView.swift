@@ -10,13 +10,13 @@ struct SettingsView: View {
     @AppStorage(Preferences.language) private var chosenLanguage = Language.default
     @Environment(\.language) private var language
     @State private var about = ""
-    @State private var tasks: [String] = []
+    @State private var picked: [String] = []
     @State private var screenshots = true
     @State private var keySaved = GatewayKey.isSaved
     @State private var newKey = ""
     @State private var keyStatus: KeyStatus = .idle
-    /// Closed by default: the key is set up once, usually for her.
-    @State private var showConnect = false
+    /// Closed by default: the key, language and folder are set up once, if ever.
+    @State private var showAdvanced = false
 
     enum KeyStatus: Equatable {
         case idle, checking, works
@@ -43,55 +43,53 @@ struct SettingsView: View {
                     .lineLimit(3...6)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(language("Kinds of task"))
-                    TagField(tags: $tasks, fixed: TaskKind.defaults.map { .init(id: $0.name, name: language.name(ofKind: $0.name), meaning: language.meaning(of: $0)) },
-                             prompt: language("Add your own, then press Return"))
+                    KindPicker(picked: $picked, suggestions: TaskKind.suggestions.map {
+                        .init(id: $0.name, name: language.name(ofKind: $0.name), meaning: language.meaning(of: $0))
+                    })
                 }
             } header: {
                 Text(language("Your work"))
             } footer: {
-                Text(language("Helps tell your work from the rest, and sort it. The outlined kinds are always there; point at one to see what it covers, click one of yours to edit it."))
+                Text(language("Helps tell your work from the rest, and sort it. Pick only the kinds that fit your work: the fewer, the sharper the sorting. Anything that fits none goes under “other”. Point at a kind to see what it covers."))
             }
 
+            // Set up once, usually for her: closed, out of the way.
             Section {
-                DisclosureGroup(isExpanded: $showConnect) {
+                DisclosureGroup(isExpanded: $showAdvanced) {
                     keyRow
                     if !keySaved, case .failed(let message) = keyStatus { Text(message).foregroundStyle(.red) }
                     Toggle(language("Send screenshots too"), isOn: $screenshots)
                     Text(language("The key lets an AI model sort your sessions into kinds of task, every hour. It stays in this Mac's Keychain; Claude never sees it. Screenshots make the sorting much more accurate, and they're sent as they are: only a screen showing an API key is held back, and password managers are never captured."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    // Both languages, so it can be found whichever one is on.
+                    Picker("Idioma · Language", selection: $chosenLanguage) {
+                        ForEach(Language.allCases, id: \.self) { Text($0.name).tag($0) }
+                    }
+                    HStack {
+                        Button(language("How It Works"), action: showGuide)
+                        Button(language("Open Journal Folder"), action: model.openFolder)
+                        Spacer()
+                        if model.updater.isAvailable {
+                            Button(language("Check for Updates"), action: model.updater.checkForUpdates)
+                        }
+                    }
                 } label: {
                     // The whole row opens it, not just the chevron.
                     HStack {
-                        Text(language("Connect AI categorization"))
+                        Text(language("Advanced"))
                         Spacer()
-                        if keySaved { Text(language("Connected")).foregroundStyle(.secondary) }
+                        if keySaved { Text(language("AI connected")).foregroundStyle(.secondary) }
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture { withAnimation { showConnect.toggle() } }
-                }
-            }
-
-            // Set once, if ever: at the bottom with the rest she rarely needs.
-            Section {
-                // Both languages, so it can be found whichever one is on.
-                Picker("Idioma · Language", selection: $chosenLanguage) {
-                    ForEach(Language.allCases, id: \.self) { Text($0.name).tag($0) }
-                }
-                HStack {
-                    Button(language("How It Works"), action: showGuide)
-                    Button(language("Open Journal Folder"), action: model.openFolder)
-                    Spacer()
-                    if model.updater.isAvailable {
-                        Button(language("Check for Updates"), action: model.updater.checkForUpdates)
-                    }
+                    .onTapGesture { withAnimation { showAdvanced.toggle() } }
                 }
             }
         }
         .formStyle(.grouped)
         .onAppear(perform: load)
         .onChange(of: about) { save() }
-        .onChange(of: tasks) { save() }
+        .onChange(of: picked) { save() }
         .onChange(of: screenshots) { save() }
     }
 
@@ -158,11 +156,12 @@ struct SettingsView: View {
     private func load() {
         guard case .success(let setup) = model.store.labelSetup() else { return }
         about = setup.about
-        tasks = setup.tasks
+        picked = setup.picked
         screenshots = setup.screenshots
     }
 
     private func save() {
-        try? model.store.save(LabelSetup(about: about.trimmingCharacters(in: .whitespacesAndNewlines), tasks: tasks, screenshots: screenshots))
+        try? model.store.save(LabelSetup(about: about.trimmingCharacters(in: .whitespacesAndNewlines), picked: picked, screenshots: screenshots))
+        model.sortAfterEdits()
     }
 }

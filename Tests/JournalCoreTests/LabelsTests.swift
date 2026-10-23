@@ -5,7 +5,7 @@ import Testing
 /// Assembled so the source holds no key-shaped literal for secret scanners to flag.
 private let fakeStripeKey = "sk_" + "live_abcdefghijklmnopqrstuvwxyz"
 
-private let setup = LabelSetup(about: "I do marketing for clients.", tasks: ["Reels"])
+private let setup = LabelSetup(about: "I do marketing for clients.", picked: ["Reels"])
 
 private func session(at offset: TimeInterval, for duration: TimeInterval = 60, app: String = "Chrome", title: String = "Tab") -> Session {
     Session(start: base + offset, end: base + offset + duration, app: app, bundleID: "id.\(app)",
@@ -18,44 +18,61 @@ private func label(_ s: Session, work: Double = 1, automatable: Double = 0.5, ta
 }
 
 struct LabelSetupTests {
-    @Test func herTasksFollowTheDefaultsOnceEach() {
-        let kinds = LabelSetup(tasks: ["Reels", " reels ", "design", ""]).kinds
-        #expect(kinds.map(\.name) == TaskKind.defaults.map(\.name) + ["reels"])
-        #expect(kinds.last == TaskKind(name: "reels", description: "reels"))
+    @Test func theModelChoosesAmongHerPicksOnceEachThenOther() {
+        let kinds = LabelSetup(picked: ["design", "Reels", " reels ", ""]).kinds
+        #expect(kinds.map(\.name) == ["design", "reels", "other"])
+        #expect(kinds.first == TaskKind.suggestions.first)
+        #expect(kinds[1] == TaskKind(name: "reels", description: "reels"))
+    }
+
+    @Test func untilSheePicksEverySuggestionIsUsed() {
+        #expect(LabelSetup().kinds == TaskKind.suggestions + [TaskKind.other])
     }
 
     @Test func addingAKindTrimsItAndSkipsBlanksAndRepeats() {
         #expect(LabelSetup.adding("  Newsletters ", to: ["Reels"]) == ["Reels", "Newsletters"])
         #expect(LabelSetup.adding("reels", to: ["Reels"]) == ["Reels"])
         #expect(LabelSetup.adding("  ", to: ["Reels"]) == ["Reels"])
-        #expect(LabelSetup.adding(" Design", to: ["Reels"]) == ["Reels"])
+        #expect(LabelSetup.adding("Other", to: ["Reels"]) == ["Reels"])
+    }
+
+    @Test func aSuggestionIsAddedUnderItsOwnName() {
+        #expect(LabelSetup.adding(" Design", to: ["Reels"]) == ["Reels", "design"])
+        #expect(LabelSetup.adding("DESIGN", to: ["design"]) == ["design"])
     }
 
     @Test func aKindAlreadyIncludedNamesTheChipItMatches() {
-        #expect(LabelSetup.included(" Design ", in: ["Reels"]) == "design")
+        #expect(LabelSetup.included(" Design ", in: ["design"]) == "design")
+        #expect(LabelSetup.included("design", in: ["Reels"]) == nil)
         #expect(LabelSetup.included("REELS", in: ["Reels"]) == "Reels")
+        #expect(LabelSetup.included("other", in: []) == "other")
         #expect(LabelSetup.included("Newsletters", in: ["Reels"]) == nil)
     }
 
     @Test func editingWhatTheModelIsToldChangesTheDef() {
-        #expect(setup.def == LabelSetup(about: setup.about, tasks: ["reels"]).def)
-        #expect(setup.def != LabelSetup(about: "I code.", tasks: setup.tasks).def)
-        #expect(setup.def != LabelSetup(about: setup.about, tasks: ["Reels", "Newsletters"]).def)
+        #expect(setup.def == LabelSetup(about: setup.about, picked: ["reels"]).def)
+        #expect(setup.def != LabelSetup(about: "I code.", picked: setup.picked).def)
+        #expect(setup.def != LabelSetup(about: setup.about, picked: ["Reels", "Newsletters"]).def)
         #expect(setup.def.count == 8)
+    }
+
+    @Test func anOldFileKeepsEveryKindItHad() {
+        #expect(LabelSetup.parse(#"{"about": "", "tasks": []}"#) == .success(LabelSetup()))
+        let old = LabelSetup.parse(#"{"about": "", "tasks": ["Reels"]}"#)
+        #expect(old == .success(LabelSetup(picked: TaskKind.suggestions.map(\.name) + ["Reels"])))
     }
 
     @Test func screenshotsAreOnUnlessTurnedOffAndAskNothingNew() {
         #expect(LabelSetup().screenshots)
-        #expect(LabelSetup.parse(#"{"about": "", "tasks": []}"#) == .success(LabelSetup()))
         // The old setting only covered windows with little text, and was saved off by default: it doesn't carry over.
         #expect(LabelSetup.parse(#"{"about": "", "tasks": [], "look": false}"#) == .success(LabelSetup()))
         #expect(LabelSetup.parse(#"{"about": "", "tasks": [], "screenshots": false}"#) == .success(LabelSetup(screenshots: false)))
-        #expect(LabelSetup(about: setup.about, tasks: setup.tasks, screenshots: false).def == setup.def)
+        #expect(LabelSetup(about: setup.about, picked: setup.picked, screenshots: false).def == setup.def)
     }
 
     @Test func roundTripsThroughTheFile() throws {
         #expect(LabelSetup.parse(try setup.file()) == .success(setup))
-        let textOnly = LabelSetup(about: setup.about, tasks: setup.tasks, screenshots: false)
+        let textOnly = LabelSetup(about: setup.about, picked: setup.picked, screenshots: false)
         #expect(LabelSetup.parse(try textOnly.file()) == .success(textOnly))
         guard case .failure(let error) = LabelSetup.parse("not json") else { Issue.record("accepted"); return }
         #expect(error.message.contains("labels.json"))

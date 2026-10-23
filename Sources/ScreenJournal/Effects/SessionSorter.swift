@@ -19,20 +19,43 @@ struct SessionSorter: Sendable {
         let sorted: Int
         /// One message per session that failed; those stay pending for the next run.
         let failures: [String]
+        let failedDays: Set<String>
+        /// Past days now fully sorted, for the next run to skip.
+        var settled: Set<Settled> = []
     }
 
-    /// Covers Your Week and then some, while an hourly run stays a few megabytes of reading.
+    /// A past day sorted without failures under one setup: nothing new lands in it, so it needn't be read again.
+    struct Settled: Hashable, Sendable {
+        let day: String
+        let def: String
+    }
+
+    /// Covers Your Week and then some.
     static let recentDays = 8
 
-    /// The recent days' pending sessions, asked and kept.
-    func sortRecent(gateway: DecisionGateway, now: Date) async -> Result<Outcome, Error> {
+    /// The recent days' pending sessions, asked and kept, skipping days already settled under this setup.
+    func sortRecent(gateway: DecisionGateway, now: Date, skipping settled: Set<Settled>) async -> Result<Outcome, Error> {
         do {
             let setup = try store.labelSetup().get()
-            let days = store.dayNames().sorted().suffix(Self.recentDays)
-            let asks = try days.flatMap { try pending($0, setup: setup, titlesOnly: false, now: now) }
-            return await sort(asks, setup: setup, gateway: gateway)
+            let days = store.dayNames().sorted().suffix(Self.recentDays).filter { !settled.contains(Settled(day: $0, def: setup.def)) }
+            let asks = try await pending(days, setup: setup, now: now)
+            return await sort(asks, setup: setup, gateway: gateway).map { outcome in
+                // A session can still be going until five minutes after midnight.
+                let past = store.day(of: now.addingTimeInterval(-Labeling.quiet))
+                var outcome = outcome
+                outcome.settled = Set(days.filter { $0 < past && !outcome.failedDays.contains($0) }.map { Settled(day: $0, def: setup.def) })
+                return outcome
+            }
         } catch {
             return .failure(error)
+        }
+    }
+
+    /// Each day read and parsed in parallel.
+    private func pending(_ days: [String], setup: LabelSetup, now: Date) async throws -> [Ask] {
+        try await withThrowingTaskGroup(of: [Ask].self) { group in
+            for day in days { group.addTask { try pending(day, setup: setup, titlesOnly: false, now: now) } }
+            return try await group.reduce(into: []) { $0 += $1 }
         }
     }
 
@@ -63,7 +86,7 @@ struct SessionSorter: Sendable {
     /// Asks, then appends each day's answers to it.
     func sort(_ asks: [Ask], setup: LabelSetup, gateway: DecisionGateway) async -> Result<Outcome, Error> {
         let results = await Self.ask(asks, kinds: setup.kinds, gateway: gateway)
-        var failures: [String] = []
+        var failures: [String] = [], failedDays: Set<String> = []
         do {
             for day in Set(asks.map(\.day)) {
                 let labels = results.filter { $0.ask.day == day }.compactMap { result -> Label? in
@@ -73,6 +96,7 @@ struct SessionSorter: Sendable {
                                      def: setup.def, source: result.source)
                     case .failure(let error):
                         failures.append(error.message)
+                        failedDays.insert(day)
                         return nil
                     }
                 }
@@ -81,7 +105,7 @@ struct SessionSorter: Sendable {
         } catch {
             return .failure(error)
         }
-        return .success(Outcome(sorted: asks.count - failures.count, failures: failures))
+        return .success(Outcome(sorted: asks.count - failures.count, failures: failures, failedDays: failedDays))
     }
 
     private struct Answered: Sendable {
@@ -90,7 +114,7 @@ struct SessionSorter: Sendable {
         let answers: Result<SystemOne.Answers, LabelError>
     }
 
-    /// Eight requests in flight: each answers one session in about a second.
+    /// Sixteen requests in flight: each answers one session in about a second.
     private static func ask(_ asks: [Ask], kinds: [TaskKind], gateway: DecisionGateway) async -> [Answered] {
         await withTaskGroup(of: Answered.self) { group in
             var results: [Answered] = []
@@ -103,7 +127,7 @@ struct SessionSorter: Sendable {
                                     answers: await gateway.answers(ask.state, kinds: kinds, screenshot: screenshot))
                 }
             }
-            for _ in 0..<8 { start() }
+            for _ in 0..<16 { start() }
             for await result in group {
                 results.append(result)
                 start()
