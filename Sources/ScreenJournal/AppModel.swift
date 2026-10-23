@@ -8,6 +8,8 @@ enum Preferences {
     static let excludedApps = "excludedBundleIDs"
     static let pausedUntil = "pausedUntil"
     static let onboarded = "onboarded"
+    /// The Accessibility step came after the first release, so people who onboarded before it see it once.
+    static let askedContext = "askedContext"
 
     static let intervalOptions: [TimeInterval] = [5, 10, 15, 30, 60]
 
@@ -18,7 +20,7 @@ enum Preferences {
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
-            interval: 10.0, retentionDays: 30, excludedApps: defaultExcludedApps, pausedUntil: 0.0, onboarded: false,
+            interval: 10.0, retentionDays: 30, excludedApps: defaultExcludedApps, pausedUntil: 0.0, onboarded: false, askedContext: false,
         ])
     }
 }
@@ -66,7 +68,17 @@ final class AppModel {
 
     func markOnboarded() {
         defaults.set(true, forKey: Preferences.onboarded)
+        defaults.set(true, forKey: Preferences.askedContext)
         start()
+    }
+
+    /// Onboarded before the Accessibility step existed, and never asked since.
+    var shouldAskForContext: Bool {
+        !defaults.bool(forKey: Preferences.askedContext) && !WindowContext.isTrusted
+    }
+
+    func markAskedForContext() {
+        defaults.set(true, forKey: Preferences.askedContext)
     }
 
     func start() {

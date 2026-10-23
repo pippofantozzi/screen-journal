@@ -28,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.startNoteShortcut()
         if model.isOnboarded {
             model.start()
+            if model.shouldAskForContext {
+                model.markAskedForContext()
+                windows.showOnboarding(at: .context)
+            }
         } else {
             windows.showOnboarding()
         }
