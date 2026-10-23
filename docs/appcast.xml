@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.2.0</title>
+      <description><![CDATA[Simpler menu and settings, notes with Option+Space anywhere, smarter sorting of your work]]></description>
+      <pubDate>Fri, 23 Oct 2026 08:45:34 -0300</pubDate>
+      <sparkle:version>10</sparkle:version>
+      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.2.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="ZH6JMbgpscQ/DgItG/OmBDQ2T+EQvvYROBrI8KGzwf8bA3x9ipPhW4e5jGuJ7q2DGCCxjITiozu0t5hCvwL/BA==" length="3327243"/>
+    </item>
+    <item>
       <title>0.1.0</title>
       <description><![CDATA[First version: journaling, notes, pause, how-it-works guide.]]></description>
       <pubDate>Wed, 21 Oct 2026 18:36:25 -0300</pubDate>
