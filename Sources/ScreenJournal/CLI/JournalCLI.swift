@@ -271,7 +271,7 @@ struct JournalCLI {
         let sorter = SessionSorter(store: store), now = Date()
         do { asks = try days.flatMap { try sorter.pending($0, setup: setup, titlesOnly: titlesOnly, now: now) } } catch { return failed(error) }
 
-        print(setup.about.isEmpty ? "No description of her work yet (Settings, or about in labels.json)." : "About her work: \(setup.about)")
+        print(setup.about.isEmpty ? "No description of your work yet (Settings, or about in labels.json)." : "About your work: \(setup.about)")
         print("Task kinds: \(setup.kinds.map(\.name).joined(separator: ", ")).")
         for day in days {
             let count = asks.filter { $0.day == day }.count, looks = asks.filter { $0.day == day && $0.screenshot != nil }.count
@@ -282,7 +282,7 @@ struct JournalCLI {
             printHandoff(days, setup: setup)
             return 0
         }
-        let sent = titlesOnly ? "her description, app, window titles and durations" : "her description, app, window titles, durations and up to 600 characters of screen text (keys redacted)"
+        let sent = titlesOnly ? "your description, app, window titles and durations" : "your description, app, window titles, durations and up to 600 characters of screen text (keys redacted)"
         let retention = DecisionGateway.zeroRetention ? "zero data retention, no prompt training" : "no prompt training"
         print("Sends, per session: \(sent), to \(DecisionGateway.model) through the Vercel AI Gateway (\(retention)).")
         if asks.contains(where: { $0.screenshot != nil }) {
