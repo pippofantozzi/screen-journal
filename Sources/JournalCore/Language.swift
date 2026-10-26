@@ -143,7 +143,6 @@ public enum Language: String, CaseIterable, Sendable {
         "Allow the microphone in Settings → Dictation.": "Permita o microfone em Ajustes → Ditado.",
         "Didn't catch that.": "Não entendi.",
         "Didn't hear anything. Check the microphone in Settings → Dictation.": "Não ouvi nada. Confira o microfone em Ajustes → Ditado.",
-        "Copied: press ⌘V to paste.": "Copiado: pressione ⌘V para colar.",
         "The gateway refused the AI key.": "O gateway recusou a chave da IA.",
         "No internet connection.": "Sem conexão com a internet.",
         "Couldn't transcribe. Try again.": "Não deu para transcrever. Tente de novo.",

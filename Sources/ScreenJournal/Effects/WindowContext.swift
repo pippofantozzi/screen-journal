@@ -50,14 +50,6 @@ enum WindowContext {
         value(element, kAXSelectedTextAttribute) as? String
     }
 
-    /// Whether typing goes in: a text role, or a selection that can be replaced.
-    static func takesText(_ element: AXUIElement) -> Bool {
-        let role = value(element, kAXRoleAttribute) as? String ?? ""
-        if ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role) { return true }
-        var settable: DarwinBoolean = false
-        return AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue
-    }
-
     private static func accessibleApp(_ pid: pid_t) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
         // Chromium and Electron build their tree only for a client that asks; Firefox-based browsers wait for a screen reader.

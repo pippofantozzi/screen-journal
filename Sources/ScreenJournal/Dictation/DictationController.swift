@@ -79,6 +79,7 @@ final class DictationController {
         phase = .listening
         listeningSince = Date()
         pill.show()
+        Sounds.play(.start)
         let selection = Task { await Selection.read() }
         self.selection = selection
         limit = Task { [weak self] in
@@ -98,6 +99,7 @@ final class DictationController {
         guard Date().timeIntervalSince(listeningSince) >= Self.shortest else { return hide() }
         guard !silent, seconds >= Self.shortest else { return notice(language("Didn't hear anything. Check the microphone in Settings → Dictation.")) }
         guard let gateway = SpeechGateway.configured() else { return notice(language("Connect AI in Settings → General.")) }
+        Sounds.play(.working)
         let words = Preferences.currentDictationWords
         let transcript: String
         switch await gateway.transcribe(wav: wav, words: words, language: Preferences.currentDictationLanguage) {
@@ -119,14 +121,10 @@ final class DictationController {
             Self.log.error("rewrite failed: \(error.message, privacy: .public)")
             return notice(reason(error))
         }
-        switch await Paster.paste(text) {
-        case .pasted:
-            Self.log.info("pasted")
-            hide()
-        case .copied:
-            Self.log.notice("no text field focused; left on the clipboard")
-            notice(language("Copied: press ⌘V to paste."))
-        }
+        Paster.paste(text)
+        Sounds.play(.done)
+        Self.log.info("pasted")
+        hide()
     }
 
     /// Esc while listening drops the recording; nothing is sent.

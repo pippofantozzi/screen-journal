@@ -18,6 +18,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resourc
 cp "$BIN_DIR/ScreenJournal" "$APP/Contents/MacOS/"
 ditto "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp Resources/Sounds/*.wav "$APP/Contents/Resources/"
 
 sed -e "s|__VERSION__|$VERSION|" -e "s|__BUILD__|$BUILD|" \
     -e "s|__FEED_URL__|${FEED_URL:-}|" -e "s|__ED_PUBLIC_KEY__|${ED_PUBLIC_KEY:-}|" \

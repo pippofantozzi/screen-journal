@@ -5,9 +5,6 @@ import AppKit
 enum Clipboard {
     typealias Snapshot = [[NSPasteboard.PasteboardType: Data]]
 
-    /// Clipboard managers skip items marked this way, so dictated text doesn't pile up in their history.
-    private static let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
-
     static var board: NSPasteboard { .general }
 
     static func snapshot() -> Snapshot {
@@ -25,13 +22,9 @@ enum Clipboard {
         })
     }
 
-    /// Returns the change count it left, to tell later whether anyone copied since.
-    @discardableResult
-    static func write(_ text: String, transient isTransient: Bool) -> Int {
+    static func write(_ text: String) {
         board.clearContents()
         board.setString(text, forType: .string)
-        if isTransient { board.setData(Data(), forType: transient) }
-        return board.changeCount
     }
 }
 
