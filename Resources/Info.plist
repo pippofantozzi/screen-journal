@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictation sends what you say to an AI that keeps nothing, then types the text where your cursor is.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Screen Journal saves a snapshot of your screen when it changes, so you can later ask Claude what to automate. Everything stays on this Mac.</string>
 	<key>SUFeedURL</key>

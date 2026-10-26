@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         quitGracefullyOnSIGTERM()
         windows.startNoteShortcut()
+        windows.startDictation()
         if model.isOnboarded {
             model.start()
             if model.shouldAskForContext {
@@ -58,6 +59,7 @@ final class WindowPresenter {
     private let model: AppModel
     private var windows: [String: NSWindow] = [:]
     private var noteShortcut: GlobalHotKey?
+    let dictation = DictationController()
 
     init(model: AppModel) {
         self.model = model
@@ -86,8 +88,8 @@ final class WindowPresenter {
     }
 
     func showSettings() {
-        show("settings", title: language("Screen Journal Settings"), size: CGSize(width: 500, height: 660)) {
-            SettingsView(model: self.model, noteShortcutWorks: self.noteShortcutWorks) { [weak self] in self?.showGuide() }
+        show("settings", title: language("Screen Journal Settings"), size: CGSize(width: 700, height: 600)) {
+            SettingsView(model: self.model, dictation: self.dictation, noteShortcutWorks: self.noteShortcutWorks) { [weak self] in self?.showGuide() }
         }
     }
 
@@ -98,6 +100,12 @@ final class WindowPresenter {
     }
 
     var noteShortcutWorks: Bool { noteShortcut != nil }
+
+    func startDictation() {
+        // Any Keychain prompt shows now, not in the middle of her first dictation.
+        _ = GatewayKey.current()
+        dictation.use(Preferences.currentDictationKey)
+    }
 
     /// A floating panel that takes typing without activating the app: her app stays in front,
     /// so the note is about what she was doing and the journal sees no app switch.
@@ -132,8 +140,7 @@ final class WindowPresenter {
 
     private func show<Content: View>(_ id: String, title: String, size: CGSize, chromeless: Bool = false, content: () -> Content) {
         if let existing = windows[id] {
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            bringForward(existing)
             return
         }
         let window = NSWindow(
@@ -148,7 +155,13 @@ final class WindowPresenter {
         window.contentView = NSHostingView(rootView: Localized { root })
         window.center()
         track(window, as: id)
-        window.makeKeyAndOrderFront(nil)
+        bringForward(window)
+    }
+
+    /// In front even when macOS declines to activate the app, as it may while another app is in use.
+    private func bringForward(_ window: NSWindow) {
+        window.orderFrontRegardless()
+        window.makeKey()
         NSApp.activate()
     }
 

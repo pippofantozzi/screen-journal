@@ -15,6 +15,17 @@ struct JournalCommandTests {
         return f.date(from: text)!
     }
 
+    @Test func dictatesARecordingWithItsSelectionAndWords() {
+        #expect(launch("dictate", "--audio", "a.wav", "--word", "Forgia", "--selection", "Dear Ana", "--word", "Notion")
+            == .command(.dictate(audio: "a.wav", selection: "Dear Ana", words: ["Forgia", "Notion"], language: .portuguese), root: nil))
+        #expect(launch("dictate", "--audio", "a.wav", "--language", "automatic")
+            == .command(.dictate(audio: "a.wav", selection: nil, words: [], language: .automatic), root: nil))
+        guard case .invalid = launch("dictate", "--audio", "a.wav", "--language", "klingon"), case .invalid = launch("dictate") else {
+            Issue.record("expected a usage error")
+            return
+        }
+    }
+
     @Test func noSubcommandStartsTheApp() {
         #expect(launch() == .app)
         #expect(launch("-psn_0_12345") == .app)

@@ -49,12 +49,15 @@ public enum JournalCommand: Equatable, Sendable {
     /// Asks the vision model about every session with a screenshot it may see, and keeps each request and reply
     /// in `out` as an eval case; writes no labels.
     case cases(day: String?, out: String, apply: Bool)
+    /// Runs a recorded WAV through dictation as if just spoken, and prints the transcript and the text it would type.
+    /// With `selection`, as if that text was highlighted.
+    case dictate(audio: String, selection: String?, words: [String], language: DictationLanguage)
 
     public struct Usage: Error, Equatable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate"]
 
     static let usage = """
     Usage:
@@ -64,6 +67,7 @@ public enum JournalCommand: Equatable, Sendable {
       ScreenJournal rebuild
       ScreenJournal label [--day 2026-10-21] [--titles-only] [--apply]
       ScreenJournal cases --out <folder> [--day 2026-10-21] [--apply]
+      ScreenJournal dictate --audio <file.wav> [--selection <text>] [--word <name> …] [--language portuguese|english|automatic]
     """
 
     fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
@@ -72,6 +76,7 @@ public enum JournalCommand: Equatable, Sendable {
         case "tidy": tidy(&options)
         case "label": label(&options)
         case "cases": cases(&options)
+        case "dictate": dictate(&options)
         default: .success(.rebuild)
         }
     }
@@ -110,6 +115,16 @@ public enum JournalCommand: Equatable, Sendable {
         let apply = options.flag("--apply")
         guard let out = options.take("--out"), !out.isEmpty else { return fail("cases needs --out with a folder to keep them in.") }
         return day(&options).map { .cases(day: $0, out: out, apply: apply) }
+    }
+
+    private static func dictate(_ options: inout Options) -> Result<JournalCommand, Usage> {
+        let words = options.takeAll("--word"), selection = options.take("--selection")
+        let spoken = options.take("--language")
+        guard let audio = options.take("--audio"), !audio.isEmpty else { return fail("dictate needs --audio with a WAV file.") }
+        guard let language = spoken.map(DictationLanguage.init(rawValue:)) ?? .default else {
+            return fail("--language is portuguese, english or automatic.")
+        }
+        return .success(.dictate(audio: audio, selection: selection, words: words, language: language))
     }
 
     /// nil when not given; every day.

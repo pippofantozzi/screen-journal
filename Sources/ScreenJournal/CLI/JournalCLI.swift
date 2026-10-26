@@ -15,6 +15,9 @@ struct JournalCLI {
     }
 
     func run() -> Int32 {
+        if case let .dictate(audio, selection, words, language) = command {
+            return dictate(audio: URL(filePath: audio), selection: selection, words: words, language: language)
+        }
         guard FileManager.default.fileExists(atPath: store.daysDir.path) else {
             print("No journal at \(store.root.path).")
             return 1
@@ -25,6 +28,7 @@ struct JournalCLI {
         case .rebuild: return withAppQuit { rebuild() }
         case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
         case let .cases(day, out, apply): return cases(day: day, out: URL(filePath: out), apply: apply)
+        case .dictate: return 0
         }
     }
 
@@ -286,7 +290,7 @@ struct JournalCLI {
         let retention = DecisionGateway.zeroRetention ? "zero data retention, no prompt training" : "no prompt training"
         print("Sends, per session: \(sent), to \(DecisionGateway.model) through the Vercel AI Gateway (\(retention)).")
         if asks.contains(where: { $0.screenshot != nil }) {
-            print("Sessions with nothing redacted on screen go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Advanced).")
+            print("Sessions with nothing redacted on screen go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Journal).")
         }
         guard apply else {
             print("\nDry run: nothing sent. Add --apply to label them.\n")
@@ -294,7 +298,7 @@ struct JournalCLI {
             return 0
         }
         guard let gateway = DecisionGateway.configured() else {
-            print("\nNo AI Gateway key: save one in Settings → Advanced, or set \(DecisionGateway.keyName).")
+            print("\nNo AI Gateway key: save one in Settings → General, or set \(GatewayKey.envName).")
             return 1
         }
 
@@ -344,7 +348,7 @@ struct JournalCLI {
             return 0
         }
         guard let gateway = DecisionGateway.configured() else {
-            print("No AI Gateway key: save one in Settings → Advanced, or set \(DecisionGateway.keyName).")
+            print("No AI Gateway key: save one in Settings → General, or set \(GatewayKey.envName).")
             return 1
         }
         let kinds = setup.kinds
@@ -446,6 +450,37 @@ struct JournalCLI {
         return result!
     }
 
+    // MARK: dictate
+
+    /// The same two requests the app sends after the second tap; nothing is pasted.
+    private func dictate(audio: URL, selection: String?, words: [String], language: DictationLanguage) -> Int32 {
+        guard let wav = try? Data(contentsOf: audio) else {
+            print("Can't read \(audio.path).")
+            return 1
+        }
+        guard let gateway = SpeechGateway.configured() else {
+            print("No AI Gateway key: save one in Settings → General, or set \(GatewayKey.envName).")
+            return 1
+        }
+        let intent = DictationIntent(selection: selection)
+        let started = Date()
+        let transcript: String
+        switch blocking({ await gateway.transcribe(wav: wav, words: words, language: language) }) {
+        case .success(let text): transcript = text
+        case .failure(let error): return failed(message: error.message)
+        }
+        let heard = Date()
+        print("Heard (\(String(format: "%.1f", heard.timeIntervalSince(started))) s): \(transcript)")
+        guard !transcript.isEmpty else { return 1 }
+        switch blocking({ await gateway.rewrite(intent, transcript: transcript, words: words) }) {
+        case .success(let text):
+            print("Typed (\(String(format: "%.1f", Date().timeIntervalSince(heard))) s): \(text)")
+            return 0
+        case .failure(let error):
+            return failed(message: error.message)
+        }
+    }
+
     // MARK: shared
 
     /// The app appends to today's files, so it's quit while they're rewritten and reopened after.
@@ -460,6 +495,11 @@ struct JournalCLI {
             }
         }
         return body()
+    }
+
+    private func failed(message: String) -> Int32 {
+        FileHandle.standardError.write(Data("Failed: \(message)\n".utf8))
+        return 1
     }
 
     private func failed(_ error: Error) -> Int32 {

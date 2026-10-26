@@ -36,11 +36,34 @@ enum WindowContext {
     }
 
     static func focusedWindow(of pid: pid_t) -> AXUIElement? {
+        value(accessibleApp(pid), kAXFocusedWindowAttribute) as! AXUIElement?
+    }
+
+    /// The element that takes typing in the frontmost app, e.g. a text field; nil without the grant.
+    static func focusedElement() -> AXUIElement? {
+        guard isTrusted, let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
+        return value(accessibleApp(pid), kAXFocusedUIElementAttribute) as! AXUIElement?
+    }
+
+    /// Its highlighted text: "" when nothing is highlighted, nil when the app doesn't say.
+    static func selectedText(of element: AXUIElement) -> String? {
+        value(element, kAXSelectedTextAttribute) as? String
+    }
+
+    /// Whether typing goes in: a text role, or a selection that can be replaced.
+    static func takesText(_ element: AXUIElement) -> Bool {
+        let role = value(element, kAXRoleAttribute) as? String ?? ""
+        if ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role) { return true }
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue
+    }
+
+    private static func accessibleApp(_ pid: pid_t) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
         // Chromium and Electron build their tree only for a client that asks; Firefox-based browsers wait for a screen reader.
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
-        return value(app, kAXFocusedWindowAttribute) as! AXUIElement?
+        return app
     }
 
     /// The window's document (a file or folder, e.g. a terminal's working directory), as a URL string.
