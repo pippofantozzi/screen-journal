@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.5.1</title>
+      <description><![CDATA[O ditado agora cola em qualquer app, inclusive no WhatsApp Web, e o texto fica na área de transferência. Sons suaves marcam quando começa a ouvir, quando escreve e quando cola.]]></description>
+      <pubDate>Mon, 26 Oct 2026 12:11:32 -0300</pubDate>
+      <sparkle:version>28</sparkle:version>
+      <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.5.1/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="Tp4hPrR/9eCRCako4OmLNRSJ11JFs1pCXc9jdI92CtNzSu/I2mb2FEkVc0qyH9rPMFMsHKcal6738ZnMb8u4CQ==" length="4073393"/>
+    </item>
+    <item>
       <title>0.5.0</title>
       <description><![CDATA[Ditado: toque no ⌘ direito, fale e toque de novo, e o texto aparece onde está o cursor. Com um texto selecionado, diga como mudá-lo. Ajustes agora em Diário, Ditado e Geral.]]></description>
       <pubDate>Mon, 26 Oct 2026 11:57:43 -0300</pubDate>
