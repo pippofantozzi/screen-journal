@@ -69,6 +69,31 @@ struct WhatsAppTests {
         ])
     }
 
+    @Test func voiceNotesCarryTheirTranscriptInTheChatAndBesideTheAudio() {
+        let export = WhatsApp.export([
+            WhatsApp.Message(date: noon, from: .member(nil), text: nil, media: .init(kind: .audio, file: "Media/x/c/d/2.opus")),
+            WhatsApp.Message(date: noon, from: .you, text: nil, media: .init(kind: .audio, file: "Media/x/e/f/3.opus")),
+        ], chat: "Bru", timeZone: utc, transcripts: ["Media/x/c/d/2.opus": "Oi, tudo bem?\nVem amanhã"])
+        #expect(export.transcript == """
+        [30/10/2026, 12:00:00] Bru: <attached: 00000001-AUDIO-2026-10-30-12-00-00.opus>
+        Transcript: Oi, tudo bem?
+        Vem amanhã
+        [30/10/2026, 12:00:00] You: <attached: 00000002-AUDIO-2026-10-30-12-00-00.opus>
+
+        """)
+        #expect(export.transcripts == [.init(name: "00000001-AUDIO-2026-10-30-12-00-00.txt", text: "Oi, tudo bem?\nVem amanhã\n")])
+    }
+
+    @Test func onlyDownloadedVoiceNotesAreTranscribed() {
+        let messages = [
+            WhatsApp.Message(date: noon, from: .you, text: nil, media: .init(kind: .audio, file: "Media/a.opus")),
+            WhatsApp.Message(date: noon, from: .you, text: nil, media: .init(kind: .audio, file: nil)),
+            WhatsApp.Message(date: noon, from: .you, text: nil, media: .init(kind: .video, file: "Media/b.mp4")),
+            WhatsApp.Message(date: noon, from: .you, text: "Oi", media: nil),
+        ]
+        #expect(WhatsApp.voiceNotes(in: messages) == ["Media/a.opus"])
+    }
+
     @Test func mediaNeverDownloadedIsOmittedAndCounted() {
         let export = WhatsApp.export([
             WhatsApp.Message(date: noon, from: .member(nil), text: nil, media: .init(kind: .video, file: nil)),

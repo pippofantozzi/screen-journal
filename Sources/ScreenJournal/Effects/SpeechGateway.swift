@@ -21,16 +21,18 @@ struct SpeechGateway: Sendable {
         self.key = key
     }
 
-    /// Empty when nothing was said.
-    func transcribe(wav: Data, words: [String], language: DictationLanguage) async -> Result<String, LabelError> {
+    /// Empty when nothing was said. `mediaType` is WAV for dictation, Ogg for a WhatsApp voice note.
+    func transcribe(_ audio: Data, mediaType: String = "audio/wav", words: [String], language: DictationLanguage, timeout: TimeInterval = 60) async -> Result<String, LabelError> {
         let body: Data
-        do { body = try Transcription.request(wav: wav, words: words, language: language, zeroRetention: Self.zeroRetention) } catch { return .failure(LabelError(message: error.localizedDescription)) }
+        do {
+            body = try Transcription.request(audio: audio, mediaType: mediaType, words: words, language: language, zeroRetention: Self.zeroRetention)
+        } catch { return .failure(LabelError(message: error.localizedDescription)) }
         let headers = [
             "ai-gateway-protocol-version": "0.0.1",
             "ai-transcription-model-specification-version": "4",
             "ai-model-id": Self.transcriptionModel,
         ]
-        return await GatewayHTTP.post(Self.transcriptionURL, key: key, headers: headers, body: body).flatMap(Transcription.text)
+        return await GatewayHTTP.post(Self.transcriptionURL, key: key, headers: headers, body: body, timeout: timeout).flatMap(Transcription.text)
     }
 
     func rewrite(_ intent: DictationIntent, transcript: String, words: [String]) async -> Result<String, LabelError> {

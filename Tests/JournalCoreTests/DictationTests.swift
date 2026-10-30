@@ -72,7 +72,7 @@ struct WAVTests {
 
 struct TranscriptionTests {
     @Test func theRequestGivesTheLanguageAndBiasesTowardTheWords() throws {
-        let body = try json(Transcription.request(wav: Data([1, 2, 3]), words: ["Forgia"], language: .portuguese, zeroRetention: true))
+        let body = try json(Transcription.request(audio: Data([1, 2, 3]), words: ["Forgia"], language: .portuguese, zeroRetention: true))
         #expect(body["audio"] as? String == "AQID")
         #expect(body["mediaType"] as? String == "audio/wav")
         let options = try #require(body["providerOptions"] as? [String: Any])
@@ -85,10 +85,18 @@ struct TranscriptionTests {
     }
 
     @Test func automaticLeavesTheLanguageToTheModelAndNoWordsSendsNoBias() throws {
-        let body = try json(Transcription.request(wav: Data(), words: [], language: .automatic, zeroRetention: true))
+        let body = try json(Transcription.request(audio: Data(), words: [], language: .automatic, zeroRetention: true))
         let mistral = try #require((body["providerOptions"] as? [String: Any])?["mistral"] as? [String: Any])
         #expect(mistral["language"] == nil)
         #expect(mistral["contextBias"] == nil)
+    }
+
+    @Test func voiceNotesGoAsTheirOwnFormat() throws {
+        let body = try json(Transcription.request(audio: Data(), mediaType: Transcription.mediaType(ofFile: "a/b.opus"), words: [], language: .automatic, zeroRetention: true))
+        #expect(body["mediaType"] as? String == "audio/ogg")
+        #expect(Transcription.mediaType(ofFile: "x.M4A") == "audio/mp4")
+        #expect(Transcription.mediaType(ofFile: "x.mp3") == "audio/mpeg")
+        #expect(Transcription.mediaType(ofFile: "x.wav") == "audio/wav")
     }
 
     @Test func eachLanguageHasTheCodeTheTranscriberExpects() {

@@ -182,16 +182,27 @@ public enum Transcription {
             let gateway: Routing
         }
         let audio: String
-        let mediaType = "audio/wav"
+        let mediaType: String
         let providerOptions: Options
     }
 
     private struct Response: Decodable { let text: String }
 
-    public static func request(wav: Data, words: [String], language: DictationLanguage, zeroRetention: Bool) throws -> Data {
+    /// Dictation records WAV; WhatsApp voice notes are Ogg Opus.
+    public static func mediaType(ofFile file: String) -> String {
+        switch (file as NSString).pathExtension.lowercased() {
+        case "wav": "audio/wav"
+        case "mp3": "audio/mpeg"
+        case "m4a", "aac", "mp4": "audio/mp4"
+        default: "audio/ogg"
+        }
+    }
+
+    public static func request(audio: Data, mediaType: String = "audio/wav", words: [String], language: DictationLanguage, zeroRetention: Bool) throws -> Data {
         let mistral = Request.Options.Mistral(language: language.code, contextBias: words.isEmpty ? nil : words)
         return try JSONEncoder().encode(Request(
-            audio: wav.base64EncodedString(),
+            audio: audio.base64EncodedString(),
+            mediaType: mediaType,
             providerOptions: .init(mistral: mistral, gateway: Routing(zeroRetention: zeroRetention))
         ))
     }

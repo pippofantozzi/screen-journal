@@ -102,7 +102,7 @@ final class DictationController {
         Sounds.play(.working)
         let words = Preferences.currentDictationWords
         let transcript: String
-        switch await gateway.transcribe(wav: wav, words: words, language: Preferences.currentDictationLanguage) {
+        switch await gateway.transcribe(wav, words: words, language: Preferences.currentDictationLanguage) {
         case .success(let text) where !text.isEmpty: transcript = text
         case .success:
             Self.log.notice("transcript empty")

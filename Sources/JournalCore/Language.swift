@@ -241,6 +241,7 @@ public enum Language: String, CaseIterable, Sendable {
         "Saving…": "Salvando…",
         "Saved. %@ media files were never downloaded to this Mac and are marked omitted.":
             "Salvo. %@ arquivos de mídia nunca foram baixados neste Mac e aparecem como omitidos.",
+        "%@ voice notes couldn't be transcribed.": "%@ áudios não puderam ser transcritos.",
         "WhatsApp for Mac isn't set up on this Mac.": "O WhatsApp para Mac não está configurado neste Mac.",
         "Can't read WhatsApp's messages: %@": "Não foi possível ler as mensagens do WhatsApp: %@",
         "Couldn't save the zip: %@": "Não foi possível salvar o zip: %@",

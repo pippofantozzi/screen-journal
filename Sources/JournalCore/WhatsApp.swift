@@ -1,7 +1,8 @@
 import Foundation
 
 /// A WhatsApp chat's last messages as a folder WhatsApp's own "Export chat" would make:
-/// `chat.txt` in its format, plus each downloaded photo, video, voice note or file beside it.
+/// `chat.txt` in its format, plus each downloaded photo, video, voice note or file beside it,
+/// and each voice note's transcript as a `.txt` of the same name.
 public enum WhatsApp {
     public struct Chat: Equatable, Hashable, Identifiable, Sendable {
         public let id: Int64
@@ -99,16 +100,33 @@ public enum WhatsApp {
         }
     }
 
+    /// A voice note's words, named after its audio file.
+    public struct VoiceTranscript: Equatable, Sendable {
+        public let name: String
+        public let text: String
+
+        public init(name: String, text: String) {
+            self.name = name
+            self.text = text
+        }
+    }
+
     public struct Export: Equatable, Sendable {
         public let transcript: String
         public let files: [Attachment]
+        public let transcripts: [VoiceTranscript]
         /// Media in the transcript that was never downloaded to this Mac.
         public let missing: Int
     }
 
-    /// `messages` oldest first.
-    public static func export(_ messages: [Message], chat: String, timeZone: TimeZone) -> Export {
-        var lines: [String] = [], files: [Attachment] = [], missing = 0
+    /// The downloaded voice notes among `messages`, as `WhatsApp.Media.file` paths, to transcribe before exporting.
+    public static func voiceNotes(in messages: [Message]) -> [String] {
+        messages.compactMap { $0.media?.kind == .audio ? $0.media?.file : nil }
+    }
+
+    /// `messages` oldest first; `transcripts` keyed by a voice note's `WhatsApp.Media.file`.
+    public static func export(_ messages: [Message], chat: String, timeZone: TimeZone, transcripts heard: [String: String] = [:]) -> Export {
+        var lines: [String] = [], files: [Attachment] = [], transcripts: [VoiceTranscript] = [], missing = 0
         for message in messages {
             let sender = switch message.from {
             case .you: "You"
@@ -121,6 +139,10 @@ public enum WhatsApp {
                         + extensionOf(file)
                     files.append(Attachment(source: file, name: name))
                     body = "<attached: \(name)>" + (body.isEmpty ? "" : " \(body)")
+                    if let text = heard[file], !text.isEmpty {
+                        transcripts.append(VoiceTranscript(name: (name as NSString).deletingPathExtension + ".txt", text: text + "\n"))
+                        body += "\nTranscript: \(text)"
+                    }
                 } else {
                     missing += 1
                     body = media.kind.omitted + (body.isEmpty ? "" : " \(body)")
@@ -128,7 +150,7 @@ public enum WhatsApp {
             }
             lines.append("[\(stamp(message.date, "dd/MM/yyyy, HH:mm:ss", timeZone))] \(sender): \(body)\n")
         }
-        return Export(transcript: lines.joined(), files: files, missing: missing)
+        return Export(transcript: lines.joined(), files: files, transcripts: transcripts, missing: missing)
     }
 
     /// The zip's and its folder's name: safe for Finder, unique to the minute.

@@ -468,7 +468,7 @@ struct JournalCLI {
         let intent = DictationIntent(selection: selection)
         let started = Date()
         let transcript: String
-        switch blocking({ await gateway.transcribe(wav: wav, words: words, language: language) }) {
+        switch blocking({ await gateway.transcribe(wav, words: words, language: language) }) {
         case .success(let text): transcript = text
         case .failure(let error): return failed(message: error.message)
         }
@@ -497,10 +497,11 @@ struct JournalCLI {
             print(wanted.map { "No WhatsApp chat named \($0)." } ?? "No chat open in WhatsApp; name one with --chat.")
             return 1
         }
-        switch WhatsAppArchive.save(chat, last: last, to: out) {
+        switch blocking({ await WhatsAppArchive.save(chat, last: last, to: out) }) {
         case .success(let saved):
             print("Saved \(saved.messages) messages from \(chat.name) to \(saved.zip.path).")
             if saved.missing > 0 { print("\(saved.missing) media files were never downloaded to this Mac and are marked omitted.") }
+            if saved.untranscribed > 0 { print("\(saved.untranscribed) voice notes couldn't be transcribed.") }
             return 0
         case .failure(let failure):
             return failed(message: "\(failure)")

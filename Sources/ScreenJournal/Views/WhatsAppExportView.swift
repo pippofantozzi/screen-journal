@@ -2,7 +2,7 @@ import AppKit
 import JournalCore
 import SwiftUI
 
-/// Left ⌘ in WhatsApp: the open chat's last messages, with their photos, videos and voice notes, as a zip in Downloads.
+/// Left ⌘ in WhatsApp: the open chat's last messages, with their photos, videos and transcribed voice notes, as a zip in Downloads.
 struct WhatsAppExportView: View {
     let chats: Result<[WhatsApp.Chat], WhatsAppStore.Failure>
     let onDone: () -> Void
@@ -13,7 +13,7 @@ struct WhatsAppExportView: View {
 
     enum SaveState: Equatable {
         case ready, saving
-        case saved(missing: Int)
+        case saved(WhatsAppArchive.Saved)
         case failed(WhatsAppArchive.Failure)
     }
 
@@ -69,9 +69,12 @@ struct WhatsAppExportView: View {
 
     private var statusLine: String? {
         switch state {
-        case .ready, .saved(missing: 0): nil
+        case .ready: nil
         case .saving: language("Saving…")
-        case .saved(let missing): language("Saved. %@ media files were never downloaded to this Mac and are marked omitted.", "\(missing)")
+        case .saved(let saved):
+            [saved.missing > 0 ? language("Saved. %@ media files were never downloaded to this Mac and are marked omitted.", "\(saved.missing)") : nil,
+             saved.untranscribed > 0 ? language("%@ voice notes couldn't be transcribed.", "\(saved.untranscribed)") : nil]
+                .compactMap { $0 }.joined(separator: " ")
         case .failed(let failure): message(failure)
         }
     }
@@ -84,17 +87,17 @@ struct WhatsAppExportView: View {
         }
     }
 
-    /// Copying media can take a few seconds, so it runs off the main thread; Finder shows the zip when it's done.
+    /// Transcribing voice notes and copying media can take a while, so it runs off the main thread; Finder shows the zip when it's done.
     private func save() {
         guard let chat, count > 0, state != .saving else { return }
         state = .saving
         let count = count
         Task {
-            let result = await Task.detached { WhatsAppArchive.save(chat, last: count) }.value
+            let result = await Task.detached { await WhatsAppArchive.save(chat, last: count) }.value
             switch result {
             case .success(let saved):
                 NSWorkspace.shared.activateFileViewerSelecting([saved.zip])
-                if saved.missing == 0 { onDone() } else { state = .saved(missing: saved.missing) }
+                if saved.missing == 0 && saved.untranscribed == 0 { onDone() } else { state = .saved(saved) }
             case .failure(let failure):
                 state = .failed(failure)
             }
