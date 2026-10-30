@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.7.0</title>
+      <description><![CDATA[Os áudios do WhatsApp agora vêm transcritos no zip exportado: o texto aparece logo abaixo de cada áudio no chat.txt e num arquivo .txt com o mesmo nome do áudio.]]></description>
+      <pubDate>Fri, 30 Oct 2026 17:03:05 -0300</pubDate>
+      <sparkle:version>33</sparkle:version>
+      <sparkle:shortVersionString>0.7.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.7.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="BDrHp4tIwalCNV2E0/YPrcsUTxRibcrCXXztimcW9/F2MCJVOfCmCq/J0+m31yMjcvya648rlD4mLpKP+ttODQ==" length="4136602"/>
+    </item>
+    <item>
       <title>0.6.0</title>
       <description><![CDATA[Exporte uma conversa do WhatsApp: no app do WhatsApp para Mac, toque no ⌘ esquerdo e escolha quantas mensagens; um zip com o texto, as fotos, os vídeos e os áudios vai para Downloads. Os sons do ditado ficaram mais suaves, e a pílula do ditado aparece também sobre apps em tela cheia.]]></description>
       <pubDate>Fri, 30 Oct 2026 13:33:10 -0300</pubDate>
