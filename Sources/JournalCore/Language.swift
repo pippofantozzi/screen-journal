@@ -78,6 +78,7 @@ public enum Language: String, CaseIterable, Sendable {
         "Until I Resume": "Até eu retomar",
         "Resume": "Retomar",
         "Note This Moment…": "Anotar este momento…",
+        "Export WhatsApp Chat…": "Exportar conversa do WhatsApp…",
         "Your Week…": "Sua semana…",
         "Settings…": "Ajustes…",
         "Quit Screen Journal": "Sair do Screen Journal",
@@ -230,6 +231,19 @@ public enum Language: String, CaseIterable, Sendable {
             "As atualizações se instalam sozinhas. Ajustes → Geral → Buscar atualizações, se tiver curiosidade.",
         "Settings → Open Journal Folder shows everything that was saved.": "Ajustes → Abrir pasta do diário mostra tudo o que foi salvo.",
         "Still stuck? Ask Filippo. 💌": "Ainda com dúvida? Pergunte ao Filippo. 💌",
+
+        // WhatsApp export
+        "Export WhatsApp chat": "Exportar conversa do WhatsApp",
+        "Chat": "Conversa",
+        "Last": "Últimas",
+        "messages": "mensagens",
+        "Export": "Exportar",
+        "Saving…": "Salvando…",
+        "Saved. %@ media files were never downloaded to this Mac and are marked omitted.":
+            "Salvo. %@ arquivos de mídia nunca foram baixados neste Mac e aparecem como omitidos.",
+        "WhatsApp for Mac isn't set up on this Mac.": "O WhatsApp para Mac não está configurado neste Mac.",
+        "Can't read WhatsApp's messages: %@": "Não foi possível ler as mensagens do WhatsApp: %@",
+        "Couldn't save the zip: %@": "Não foi possível salvar o zip: %@",
 
         // Onboarding
         "Hi! Let's learn how you work": "Oi! Vamos entender como você trabalha",

@@ -52,12 +52,15 @@ public enum JournalCommand: Equatable, Sendable {
     /// Runs a recorded WAV through dictation as if just spoken, and prints the transcript and the text it would type.
     /// With `selection`, as if that text was highlighted.
     case dictate(audio: String, selection: String?, words: [String], language: DictationLanguage)
+    /// Zips a WhatsApp chat's last `last` messages with their media into `out` (Downloads when nil);
+    /// `chat` nil means the chat open in the WhatsApp Mac app.
+    case whatsapp(chat: String?, last: Int, out: String?)
 
     public struct Usage: Error, Equatable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp"]
 
     static let usage = """
     Usage:
@@ -68,6 +71,7 @@ public enum JournalCommand: Equatable, Sendable {
       ScreenJournal label [--day 2026-10-21] [--titles-only] [--apply]
       ScreenJournal cases --out <folder> [--day 2026-10-21] [--apply]
       ScreenJournal dictate --audio <file.wav> [--selection <text>] [--word <name> …] [--language portuguese|english|automatic]
+      ScreenJournal whatsapp [--chat <name>] [--last 200] [--out <folder>]
     """
 
     fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
@@ -77,6 +81,7 @@ public enum JournalCommand: Equatable, Sendable {
         case "label": label(&options)
         case "cases": cases(&options)
         case "dictate": dictate(&options)
+        case "whatsapp": whatsapp(&options)
         default: .success(.rebuild)
         }
     }
@@ -125,6 +130,12 @@ public enum JournalCommand: Equatable, Sendable {
             return fail("--language is portuguese, english or automatic.")
         }
         return .success(.dictate(audio: audio, selection: selection, words: words, language: language))
+    }
+
+    private static func whatsapp(_ options: inout Options) -> Result<JournalCommand, Usage> {
+        let chat = options.take("--chat"), out = options.take("--out")
+        guard let last = Int(options.take("--last") ?? "200"), last > 0 else { return fail("--last is how many messages, 1 or more.") }
+        return .success(.whatsapp(chat: chat, last: last, out: out))
     }
 
     /// nil when not given; every day.

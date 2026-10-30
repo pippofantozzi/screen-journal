@@ -1,7 +1,7 @@
 import Foundation
 import JournalCore
 
-/// `forget`, `tidy` and `rebuild` from the command line. Every change is a dry run unless `--apply` is given.
+/// `forget`, `tidy`, `rebuild` and the rest from the command line. Every change is a dry run unless `--apply` is given.
 /// Writes go through JournalStore; with `--root` the running app is never quit or reopened.
 struct JournalCLI {
     let command: JournalCommand
@@ -18,6 +18,9 @@ struct JournalCLI {
         if case let .dictate(audio, selection, words, language) = command {
             return dictate(audio: URL(filePath: audio), selection: selection, words: words, language: language)
         }
+        if case let .whatsapp(chat, last, out) = command {
+            return whatsapp(chat: chat, last: last, out: out.map { URL(filePath: $0) } ?? WhatsAppArchive.downloads)
+        }
         guard FileManager.default.fileExists(atPath: store.daysDir.path) else {
             print("No journal at \(store.root.path).")
             return 1
@@ -28,7 +31,7 @@ struct JournalCLI {
         case .rebuild: return withAppQuit { rebuild() }
         case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
         case let .cases(day, out, apply): return cases(day: day, out: URL(filePath: out), apply: apply)
-        case .dictate: return 0
+        case .dictate, .whatsapp: return 0
         }
     }
 
@@ -478,6 +481,29 @@ struct JournalCLI {
             return 0
         case .failure(let error):
             return failed(message: error.message)
+        }
+    }
+
+    // MARK: whatsapp
+
+    private func whatsapp(chat name: String?, last: Int, out: URL) -> Int32 {
+        let chats: [WhatsApp.Chat]
+        switch WhatsAppStore.chats() {
+        case .success(let found): chats = found
+        case .failure(let failure): return failed(message: "\(failure)")
+        }
+        let wanted = name ?? WhatsAppWindow.openChatName()
+        guard let chat = WhatsApp.chat(named: wanted, among: chats) else {
+            print(wanted.map { "No WhatsApp chat named \($0)." } ?? "No chat open in WhatsApp; name one with --chat.")
+            return 1
+        }
+        switch WhatsAppArchive.save(chat, last: last, to: out) {
+        case .success(let saved):
+            print("Saved \(saved.messages) messages from \(chat.name) to \(saved.zip.path).")
+            if saved.missing > 0 { print("\(saved.missing) media files were never downloaded to this Mac and are marked omitted.") }
+            return 0
+        case .failure(let failure):
+            return failed(message: "\(failure)")
         }
     }
 

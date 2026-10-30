@@ -14,6 +14,7 @@ enum Preferences {
     static let dictationKey = "dictationKey"
     static let dictationWords = "dictationWords"
     static let dictationLanguage = "dictationLanguage"
+    static let whatsappLast = "whatsappLast"
 
     /// For AppKit, which reads it once when a window opens; SwiftUI views follow it live through `Localized`.
     static var currentLanguage: Language {

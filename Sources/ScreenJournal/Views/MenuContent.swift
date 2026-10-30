@@ -44,6 +44,8 @@ struct MenuContent: View {
         // Shows ⌥Space beside the item, so the menu teaches the shortcut that works everywhere.
         Button(language("Note This Moment…")) { windows.showNote() }
             .keyboardShortcut(.space, modifiers: .option)
+        // In WhatsApp, a tap of Left ⌘ opens it too; a menu can't show a lone modifier.
+        Button(language("Export WhatsApp Chat…")) { windows.showWhatsAppExport() }
         Button(language("Your Week…")) { windows.showWeek() }
         // One place for everything else, so there's never a second place to look.
         Button(language("Settings…")) { windows.showSettings() }

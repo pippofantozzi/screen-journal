@@ -1,21 +1,30 @@
 import AppKit
 import JournalCore
 
-/// Watches keys and clicks in every app for taps of the dictation key, and for Esc.
+/// Watches keys and clicks in every app for taps of one modifier key alone (the dictation key, Left ⌘ for WhatsApp), and for Esc.
 /// Sees other apps' events only with the Accessibility grant, and only if it had the grant when it started.
 @MainActor
 final class KeyWatcher {
     private static let escape: UInt16 = 53
     private static let events: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
 
-    private let key: DictationKey
+    /// Left ⌘, as `NSEvent` reports it.
+    static let leftCommand = (keyCode: UInt16(55), deviceMask: UInt(0x08))
+
+    private let keyCode: UInt16?
+    private let deviceMask: UInt
     private let onTap: () -> Void
     private let onEscape: () -> Void
     private var tap = ModifierTap()
     private var monitors: [Any] = []
 
-    init(key: DictationKey, onTap: @escaping () -> Void, onEscape: @escaping () -> Void) {
-        self.key = key
+    convenience init(key: DictationKey, onTap: @escaping () -> Void, onEscape: @escaping () -> Void) {
+        self.init(keyCode: key.keyCode, deviceMask: key.deviceMask, onTap: onTap, onEscape: onEscape)
+    }
+
+    init(keyCode: UInt16?, deviceMask: UInt, onTap: @escaping () -> Void, onEscape: @escaping () -> Void = {}) {
+        self.keyCode = keyCode
+        self.deviceMask = deviceMask
         self.onTap = onTap
         self.onEscape = onEscape
         if let global = NSEvent.addGlobalMonitorForEvents(matching: Self.events, handler: { [weak self] event in
@@ -37,7 +46,7 @@ final class KeyWatcher {
     }
 
     private func kind(of event: NSEvent) -> ModifierTap.Event {
-        guard event.type == .flagsChanged, event.keyCode == key.keyCode else { return .other }
-        return event.modifierFlags.rawValue & key.deviceMask != 0 ? .down : .up
+        guard event.type == .flagsChanged, event.keyCode == keyCode else { return .other }
+        return event.modifierFlags.rawValue & deviceMask != 0 ? .down : .up
     }
 }

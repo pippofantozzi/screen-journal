@@ -15,6 +15,16 @@ struct JournalCommandTests {
         return f.date(from: text)!
     }
 
+    @Test func exportsAWhatsAppChat() {
+        #expect(launch("whatsapp") == .command(.whatsapp(chat: nil, last: 200, out: nil), root: nil))
+        #expect(launch("whatsapp", "--chat", "Bru", "--last", "50", "--out", "/tmp")
+            == .command(.whatsapp(chat: "Bru", last: 50, out: "/tmp"), root: nil))
+        guard case .invalid = launch("whatsapp", "--last", "0"), case .invalid = launch("whatsapp", "--last", "lots") else {
+            Issue.record("--last must be a positive whole number")
+            return
+        }
+    }
+
     @Test func dictatesARecordingWithItsSelectionAndWords() {
         #expect(launch("dictate", "--audio", "a.wav", "--word", "Forgia", "--selection", "Dear Ana", "--word", "Notion")
             == .command(.dictate(audio: "a.wav", selection: "Dear Ana", words: ["Forgia", "Notion"], language: .portuguese), root: nil))

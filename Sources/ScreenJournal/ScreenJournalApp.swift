@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         quitGracefullyOnSIGTERM()
         windows.startNoteShortcut()
+        windows.startWhatsAppTap()
         windows.startDictation()
         if model.isOnboarded {
             model.start()
@@ -59,6 +60,7 @@ final class WindowPresenter {
     private let model: AppModel
     private var windows: [String: NSWindow] = [:]
     private var noteShortcut: GlobalHotKey?
+    private var whatsappTap: KeyWatcher?
     let dictation = DictationController()
 
     init(model: AppModel) {
@@ -101,6 +103,16 @@ final class WindowPresenter {
 
     var noteShortcutWorks: Bool { noteShortcut != nil }
 
+    /// Tapping Left ⌘ alone while WhatsApp is in front; anywhere else it's in too many shortcuts to mean this.
+    /// Like dictation, it hears other apps' keys only with the Accessibility grant it had at launch.
+    func startWhatsAppTap() {
+        let key = KeyWatcher.leftCommand
+        whatsappTap = KeyWatcher(keyCode: key.keyCode, deviceMask: key.deviceMask) { [weak self] in
+            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == WhatsAppWindow.bundleID else { return }
+            self?.showWhatsAppExport()
+        }
+    }
+
     func startDictation() {
         // Any Keychain prompt shows now, not in the middle of her first dictation.
         _ = GatewayKey.current()
@@ -115,23 +127,44 @@ final class WindowPresenter {
             return
         }
         let moment = model.currentMoment()
+        showPanel("note", title: language("Note this moment")) {
+            NoteView(
+                onSave: { [weak self] text in
+                    self?.model.addNote(text, about: moment)
+                    self?.close("note")
+                },
+                onCancel: { [weak self] in self?.close("note") }
+            )
+        }
+    }
+
+    /// Over WhatsApp without activating Screen Journal, with the chat open there already picked.
+    func showWhatsAppExport() {
+        if let existing = windows["whatsapp"] {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        let chats = WhatsAppStore.chats()
+        let open = WhatsApp.chat(named: WhatsAppWindow.openChatName(), among: (try? chats.get()) ?? [])
+        showPanel("whatsapp", title: language("Export WhatsApp chat")) {
+            WhatsAppExportView(chats: chats, open: open) { [weak self] in self?.close("whatsapp") }
+        }
+    }
+
+    /// A floating panel that takes typing without activating the app.
+    private func showPanel<Content: View>(_ id: String, title: String, content: () -> Content) {
         let panel = NotePanel(
             contentRect: CGRect(origin: .zero, size: CGSize(width: 420, height: 170)),
             styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false
         )
-        panel.title = language("Note this moment")
+        panel.title = title
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        panel.contentView = NSHostingView(rootView: Localized { NoteView(
-            onSave: { [weak self] text in
-                self?.model.addNote(text, about: moment)
-                self?.close("note")
-            },
-            onCancel: { [weak self] in self?.close("note") }
-        ) })
+        let root = content()
+        panel.contentView = NSHostingView(rootView: Localized { root })
         panel.center()
-        track(panel, as: "note")
+        track(panel, as: id)
         panel.makeKeyAndOrderFront(nil)
     }
 
