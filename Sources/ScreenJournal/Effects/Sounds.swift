@@ -1,7 +1,7 @@
 import AppKit
 
 /// Short cues for dictation, made with earshot's sound bank and tuned to one key (`Resources/Sounds`):
-/// a pop when listening starts, a soft wooden tick when the writing starts, a rising chime once pasted.
+/// soft, low wood, each a step down: a knock when listening starts, a fingertip on a book while writing, a lower knock once pasted.
 @MainActor
 enum Sounds {
     enum Cue: String {
