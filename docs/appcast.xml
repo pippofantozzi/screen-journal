@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.6.0</title>
+      <description><![CDATA[Exporte uma conversa do WhatsApp: no app do WhatsApp para Mac, toque no ⌘ esquerdo e escolha quantas mensagens; um zip com o texto, as fotos, os vídeos e os áudios vai para Downloads. Os sons do ditado ficaram mais suaves, e a pílula do ditado aparece também sobre apps em tela cheia.]]></description>
+      <pubDate>Fri, 30 Oct 2026 13:33:10 -0300</pubDate>
+      <sparkle:version>31</sparkle:version>
+      <sparkle:shortVersionString>0.6.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.6.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="o87Aru2P2848UirG7CzAtUbi3aEtz/gpPFLzw6iITgVTZmcYRMosjV+cskhKHz5H/kXUhLmHAGSaL0WV9u5ZCA==" length="4108806"/>
+    </item>
+    <item>
       <title>0.5.1</title>
       <description><![CDATA[O ditado agora cola em qualquer app, inclusive no WhatsApp Web, e o texto fica na área de transferência. Sons suaves marcam quando começa a ouvir, quando escreve e quando cola.]]></description>
       <pubDate>Mon, 26 Oct 2026 12:11:32 -0300</pubDate>
