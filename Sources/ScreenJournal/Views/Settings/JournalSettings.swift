@@ -11,6 +11,7 @@ struct JournalSettings: View {
     @State private var about = ""
     @State private var picked: [String] = []
     @State private var screenshots = true
+    @State private var promptCopied = false
 
     var body: some View {
         Form {
@@ -48,6 +49,15 @@ struct JournalSettings: View {
             } footer: {
                 Text(language("Helps tell your work from the rest, and sort it. Pick only the kinds that fit your work: the fewer, the sharper the sorting. Anything that fits none goes under “other”. Point at a kind to see what it covers."))
             }
+
+            Section {
+                LabeledContent(language("Prompt for your agent")) {
+                    Button(action: copyAgentPrompt) {
+                        Label(promptCopied ? language("Copied") : language("Copy"), systemImage: promptCopied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .onAppear(perform: load)
@@ -61,6 +71,12 @@ struct JournalSettings: View {
         about = setup.about
         picked = setup.picked
         screenshots = setup.screenshots
+    }
+
+    /// Where the journal lives and how to build on it, for whichever agent she pastes it into.
+    private func copyAgentPrompt() {
+        Clipboard.write(AgentBrief.prompt(root: model.store.root.path, language: language))
+        withAnimation(.spring(duration: 0.3)) { promptCopied = true }
     }
 
     private func save() {

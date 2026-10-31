@@ -150,6 +150,7 @@ public enum Language: String, CaseIterable, Sendable {
         "No microphone.": "Nenhum microfone.",
         "How It Works": "Como funciona",
         "Open Journal Folder": "Abrir pasta do diário",
+        "Prompt for your agent": "Prompt para o seu agente",
         "Check for Updates": "Buscar atualizações",
 
         // Your week
