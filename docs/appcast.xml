@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.8.0</title>
+      <description><![CDATA[Settings → Journal: copy a prompt that lets an agent study your journal, interview you, and build the agents and routines you approve.]]></description>
+      <pubDate>Sat, 31 Oct 2026 13:13:09 -0300</pubDate>
+      <sparkle:version>35</sparkle:version>
+      <sparkle:shortVersionString>0.8.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.8.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="H5p4sLVR/uri6M5h0hOQK5ZjR7P/i8YgwiX+nwoMXmXCxT6HLlCgeYW7nZowsPGjYwHckDbFp9Goxf5bIjpMDg==" length="4149879"/>
+    </item>
+    <item>
       <title>0.7.0</title>
       <description><![CDATA[Os áudios do WhatsApp agora vêm transcritos no zip exportado: o texto aparece logo abaixo de cada áudio no chat.txt e num arquivo .txt com o mesmo nome do áudio.]]></description>
       <pubDate>Fri, 30 Oct 2026 17:03:05 -0300</pubDate>
