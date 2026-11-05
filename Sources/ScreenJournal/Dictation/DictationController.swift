@@ -37,6 +37,7 @@ final class DictationController {
     @ObservationIgnored private var selection: Task<String?, Never>?
     @ObservationIgnored private var limit: Task<Void, Never>?
     @ObservationIgnored private var clearNotice: Task<Void, Never>?
+    @ObservationIgnored private var improvement: Task<Void, Never>?
     @ObservationIgnored private var listeningSince = Date.distantPast
     @ObservationIgnored private lazy var pill = DictationPillPanel(controller: self)
 
@@ -52,7 +53,53 @@ final class DictationController {
             }
             return
         }
-        watcher = KeyWatcher(key: key, onTap: { [weak self] in self?.toggle() }, onEscape: { [weak self] in self?.cancel() })
+        watcher = KeyWatcher(key: key, onTap: { [weak self] in self?.toggle() },
+                             onDoubleTap: { [weak self] in self?.improve() },
+                             onEscape: { [weak self] in self?.cancel() })
+    }
+
+    /// Double-tap: improve the selection directly, without recording or asking for microphone access.
+    private func improve() {
+        switch phase {
+        case .listening: Task { await finish() }; return
+        case .working: return
+        case .idle, .notice: break
+        }
+        guard let gateway = SpeechGateway.configured() else { return notice(language("Connect AI in Settings → General.")) }
+        clearNotice?.cancel()
+        phase = .working
+        isEditing = true
+        pill.show()
+        let target = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        improvement = Task { [weak self] in
+            guard let self else { return }
+            defer { if !Task.isCancelled { self.improvement = nil } }
+            let intent = DictationIntent(selection: await Selection.read())
+            guard !Task.isCancelled else { return }
+            guard case .edit(let original) = intent else { return self.notice(self.language("Highlight text to improve it.")) }
+            Sounds.play(.working)
+            let result = await gateway.rewrite(intent, transcript: Rewrite.improveInstruction, words: Preferences.currentDictationWords)
+            guard !Task.isCancelled else { return }
+            switch result {
+            case .success(let text) where !text.isEmpty:
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target else {
+                    return self.notice(self.language("Text changed. Highlight it and try again."))
+                }
+                let selected = await Selection.read()
+                guard !Task.isCancelled else { return }
+                guard selected == original, NSWorkspace.shared.frontmostApplication?.processIdentifier == target else {
+                    return self.notice(self.language("Text changed. Highlight it and try again."))
+                }
+                Paster.paste(text)
+                Sounds.play(.done)
+                self.hide()
+            case .success:
+                self.notice(self.language("Couldn't improve the text. Try again."))
+            case .failure(let error):
+                Self.log.error("text improvement failed: \(error.message, privacy: .public)")
+                self.notice(self.language("Couldn't improve the text. Try again."))
+            }
+        }
     }
 
     private func toggle() {
@@ -127,8 +174,14 @@ final class DictationController {
         hide()
     }
 
-    /// Esc while listening drops the recording; nothing is sent.
+    /// Esc drops a recording or cancels a pending text improvement before anything is pasted.
     func cancel() {
+        if let improvement {
+            improvement.cancel()
+            self.improvement = nil
+            hide()
+            return
+        }
         guard phase == .listening else { return }
         limit?.cancel()
         selection?.cancel()

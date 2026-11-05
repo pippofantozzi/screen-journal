@@ -24,6 +24,7 @@ struct DictationSettings: View {
                     needs
                     LabeledContent(language("Write")) { steps(.key, .action(language("speak")), .key) }
                     LabeledContent(language("Edit")) { steps(.action(language("highlight")), .key, .action(language("say how")), .key) }
+                    LabeledContent(language("Improve")) { steps(.action(language("highlight")), .action(language("double-tap Right %@", key.symbol))) }
                 }
             }
 

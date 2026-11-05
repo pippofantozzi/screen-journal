@@ -88,6 +88,35 @@ public struct ModifierTap: Sendable {
     }
 }
 
+/// Wait briefly after a tap so a second tap can choose a text improvement instead of dictation.
+public struct ModifierGesture: Sendable {
+    public enum Action: Equatable, Sendable { case none, wait, single, double }
+    public static let interval: TimeInterval = 0.35
+
+    private var tap = ModifierTap()
+    private var tappedAt: TimeInterval?
+
+    public init() {}
+
+    public mutating func feed(_ event: ModifierTap.Event, at time: TimeInterval) -> Action {
+        if case .other = event { tappedAt = nil }
+        guard tap.feed(event, at: time) else { return .none }
+        if let tappedAt, time - tappedAt <= Self.interval {
+            self.tappedAt = nil
+            return .double
+        }
+        tappedAt = time
+        return .wait
+    }
+
+    /// Called after the double-tap window closes; a completed pair or an intervening shortcut leaves nothing to do.
+    public mutating func flush() -> Action {
+        guard tappedAt != nil else { return .none }
+        tappedAt = nil
+        return .single
+    }
+}
+
 /// 16-bit mono PCM in a WAV file, which the transcriber accepts as is.
 public enum WAV {
     public static func encode(samples: [Int16], sampleRate: Int) -> Data {
@@ -218,6 +247,13 @@ public enum Transcription {
 
 /// The transcript turned into what she meant to type, or her selection rewritten as she asked.
 public enum Rewrite {
+    /// Only the double-tap flow supplies this instruction; voice dictation keeps its own prompts.
+    public static let improveInstruction = """
+        Just improve basic formatting, grammar, and clarity. Preserve the original meaning, language, and tone; don't add information or answer the text.
+        Assume the text will be sent on WhatsApp. Use WhatsApp formatting when useful: *bold*, _italic_, ~strikethrough~, and ```monospace```.
+        Never use ** for bold, Markdown headings, or Markdown links. Don't add emphasis or other formatting unnecessarily.
+        """
+
     public static let writeInstructions = """
         You turn dictated speech into the text the speaker meant to type. The dictation is inside <text>.
         Fix punctuation, capitalization and paragraphs. Write numbers, dates and times the way people type them. Use a list only when one was dictated.

@@ -34,6 +34,8 @@ Follow the welcome window. After that it opens at login, updates itself, and liv
 - **Agent prompt** (Settings → Journal → Prompt for your agent → Copy): copies a prompt for any coding agent with the journal's absolute paths, the reading order and lenses, the privacy rules, and four gates: understand the data, interview the owner one question at a time, propose agents, skills, routines and connections with evidence and wait for approval by name, then build one at a time, pausing for the owner to connect services (`Sources/JournalCore/AgentBrief.swift`).
 - **Code**: `JournalCore` is pure logic with tests (`swift test`). `Sources/ScreenJournal/Effects` holds thin adapters over the macOS APIs.
 
+With text highlighted, quickly double-tap Right ⌘ (or Right ⌥ if that is the dictation shortcut) to improve basic formatting, grammar, and clarity without speaking or using the microphone. This flow assumes WhatsApp formatting: `*bold*`, `_italic_`, `~strikethrough~`, and monospace, never `**bold**`. Ordinary dictation and spoken editing keep their existing prompts. Nothing is replaced if the selection changes while the rewrite runs; Esc cancels. With no selection, a double-tap only asks you to highlight text.
+
 ## Develop
 
 ```bash

@@ -54,6 +54,70 @@ struct ModifierTapTests {
     }
 }
 
+struct ModifierGestureTests {
+    @Test func oneTapStartsDictationWhenTheDoubleTapWindowCloses() {
+        var gesture = ModifierGesture()
+        _ = gesture.feed(.down, at: 10)
+        #expect(gesture.feed(.up, at: 10.1) == .wait)
+        #expect(gesture.flush() == .single)
+        #expect(gesture.flush() == .none)
+    }
+
+    @Test func twoQuickTapsImproveInsteadOfStartingDictation() {
+        var gesture = ModifierGesture()
+        #expect(gesture.feed(.down, at: 10) == .none)
+        #expect(gesture.feed(.up, at: 10.1) == .wait)
+        #expect(gesture.feed(.down, at: 10.2) == .none)
+        #expect(gesture.feed(.up, at: 10.3) == .double)
+        #expect(gesture.flush() == .none)
+    }
+
+    @Test func typingClickingOrAnotherModifierCancelsThePendingTap() {
+        var gesture = ModifierGesture()
+        _ = gesture.feed(.down, at: 10)
+        _ = gesture.feed(.up, at: 10.1)
+        _ = gesture.feed(.other, at: 10.2)
+        #expect(gesture.flush() == .none)
+        _ = gesture.feed(.down, at: 10.25)
+        #expect(gesture.feed(.up, at: 10.3) == .wait)
+        #expect(gesture.flush() == .single)
+    }
+
+    @Test func slowTapsAndHoldsDoNotImproveText() {
+        var gesture = ModifierGesture()
+        _ = gesture.feed(.down, at: 10)
+        _ = gesture.feed(.up, at: 10.1)
+        #expect(gesture.flush() == .single)
+        _ = gesture.feed(.down, at: 11)
+        #expect(gesture.feed(.up, at: 11.1) == .wait)
+        #expect(gesture.flush() == .single)
+        _ = gesture.feed(.down, at: 12)
+        #expect(gesture.feed(.up, at: 13) == .none)
+        #expect(gesture.flush() == .none)
+    }
+
+    @Test func aCommandShortcutDoesNotCountAsEitherTap() {
+        var gesture = ModifierGesture()
+        _ = gesture.feed(.down, at: 10)
+        _ = gesture.feed(.other, at: 10.05)
+        #expect(gesture.feed(.up, at: 10.1) == .none)
+        _ = gesture.feed(.down, at: 10.2)
+        #expect(gesture.feed(.up, at: 10.3) == .wait)
+        #expect(gesture.flush() == .single)
+    }
+
+    @Test func threeTapsProduceOneImprovementThenOneDictation() {
+        var gesture = ModifierGesture()
+        _ = gesture.feed(.down, at: 10)
+        _ = gesture.feed(.up, at: 10.05)
+        _ = gesture.feed(.down, at: 10.1)
+        #expect(gesture.feed(.up, at: 10.15) == .double)
+        _ = gesture.feed(.down, at: 10.2)
+        #expect(gesture.feed(.up, at: 10.25) == .wait)
+        #expect(gesture.flush() == .single)
+    }
+}
+
 struct WAVTests {
     @Test func theHeaderDescribes16BitMonoPCM() {
         let wav = WAV.encode(samples: [1, -1], sampleRate: 16_000)
@@ -125,6 +189,20 @@ struct SilenceTests {
 }
 
 struct RewriteTests {
+    @Test func quickImprovementUsesWhatsAppFormattingOnlyInThatFlow() throws {
+        let body = try json(Rewrite.request(model: "m", intent: .edit(selection: "ola   tudo bem"), transcript: Rewrite.improveInstruction, words: [], zeroRetention: true))
+        let sent = try #require(body["messages"] as? [[String: String]])
+        let content = try #require(sent[1]["content"])
+        #expect(content.contains("<selected>\nola   tudo bem\n</selected>"))
+        #expect(content.contains("formatting, grammar, and clarity"))
+        #expect(content.contains("WhatsApp"))
+        #expect(content.contains("*bold*"))
+        #expect(content.contains("_italic_"))
+        #expect(content.contains("Never use **"))
+        #expect(!Rewrite.editInstructions.contains("WhatsApp"))
+        #expect(!Rewrite.writeInstructions.contains("WhatsApp"))
+    }
+
     private func messages(_ intent: DictationIntent, words: [String] = []) throws -> [[String: String]] {
         let body = try json(Rewrite.request(model: "m", intent: intent, transcript: "say this", words: words, zeroRetention: true))
         return try #require(body["messages"] as? [[String: String]])
