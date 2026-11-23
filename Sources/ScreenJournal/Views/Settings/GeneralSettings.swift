@@ -1,7 +1,7 @@
 import JournalCore
 import SwiftUI
 
-/// What the journal and dictation share: the AI key, the language, the folder, updates. Set up once, if ever.
+/// What the journal and dictation share: the AI key, the language, the folder, updates, diagnostics. Set up once, if ever.
 struct GeneralSettings: View {
     let model: AppModel
     let showGuide: () -> Void
@@ -10,6 +10,7 @@ struct GeneralSettings: View {
     @State private var keySaved = GatewayKey.isSaved
     @State private var newKey = ""
     @State private var keyStatus: KeyStatus = .idle
+    @State private var diagnosticsCopied = false
 
     enum KeyStatus: Equatable {
         case idle, checking, works
@@ -38,6 +39,30 @@ struct GeneralSettings: View {
                         Button(language("Check for Updates"), action: model.updater.checkForUpdates)
                     }
                 }
+            }
+
+            Section {
+                if let error = model.lastCaptureError {
+                    LabeledContent(language("Last capture error")) {
+                        Text(error).foregroundStyle(.red).lineLimit(2).help(error)
+                    }
+                }
+                if let error = model.lastSortError {
+                    LabeledContent(language("Last sort error")) {
+                        Text(error).foregroundStyle(.red).lineLimit(2).help(error)
+                    }
+                }
+                LabeledContent(language("Support summary")) {
+                    Button(action: copyDiagnostics) {
+                        Label(diagnosticsCopied ? language("Copied") : language("Copy Diagnostics"),
+                              systemImage: diagnosticsCopied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+            } header: {
+                Text(language("Diagnostics"))
+            } footer: {
+                Text(language("Includes version, permissions, storage size and recent errors — never screen text or keys."))
             }
         }
         .formStyle(.grouped)
@@ -100,6 +125,16 @@ struct GeneralSettings: View {
             case .success: keyStatus = .works
             case .failure(let error): keyStatus = .failed(error.message.hasPrefix("401") || error.message.hasPrefix("403") ? language("The gateway refused this key.") : error.message)
             }
+        }
+    }
+
+    private func copyDiagnostics() {
+        Task {
+            let report = await model.diagnosticsReport()
+            Clipboard.write(report)
+            withAnimation(.spring(duration: 0.3)) { diagnosticsCopied = true }
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation(.spring(duration: 0.3)) { diagnosticsCopied = false }
         }
     }
 }

@@ -41,15 +41,33 @@ struct MenuContent: View {
         } else {
             Button(language("Resume")) { model.resume() }
         }
+        Button(language("Forget Last 15 Minutes…")) { windows.confirmForgetRecent(minutes: 15) }
         // Shows ⌥Space beside the item, so the menu teaches the shortcut that works everywhere.
         Button(language("Note This Moment…")) { windows.showNote() }
             .keyboardShortcut(.space, modifiers: .option)
         // In WhatsApp, a tap of Left ⌘ opens it too; a menu can't show a lone modifier.
         Button(language("Export WhatsApp Chat…")) { windows.showWhatsAppExport() }
         Button(language("Your Week…")) { windows.showWeek() }
+
         if windows.dictation.hasUnsent {
-            Button(language("Retry Last Dictation")) { windows.dictation.retry() }
+            Divider()
+            Button(windows.dictation.unsentCount > 1
+                ? language("Retry Last Dictation (%@)", "\(windows.dictation.unsentCount)")
+                : language("Retry Last Dictation")) {
+                windows.dictation.retry()
+            }
+            Button(language("Discard Unsent Dictation")) { windows.dictation.discardLastUnsent() }
         }
+        if !windows.dictation.recent.isEmpty {
+            Menu(language("Recent Dictations")) {
+                ForEach(Array(windows.dictation.recent.enumerated()), id: \.offset) { _, text in
+                    Button(preview(text)) { windows.dictation.copyRecent(text) }
+                }
+            }
+        }
+
+        Divider()
+
         // One place for everything else, so there's never a second place to look.
         Button(language("Settings…")) { windows.showSettings() }
             .keyboardShortcut(",")
@@ -58,6 +76,11 @@ struct MenuContent: View {
 
         Button(language("Quit Screen Journal")) { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    private func preview(_ text: String) -> String {
+        let singleLine = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+        return singleLine.count > 48 ? String(singleLine.prefix(48)) + "…" : singleLine
     }
 
     private var headline: String {

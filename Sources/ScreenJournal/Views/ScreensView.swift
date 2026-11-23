@@ -2,22 +2,29 @@ import AppKit
 import JournalCore
 import SwiftUI
 
-/// What a week's sorted sessions looked like, filtered by task and by whether Claude could take them over.
+/// What a week's sorted sessions looked like, filtered by task, share, or a specific window,
+/// with quick actions to correct a label, forget a session, or exclude its app.
 struct ScreensView: View {
     let report: WeekReport
-    let store: JournalStore
+    let model: AppModel
     @Binding var filter: Filter
     let back: () -> Void
     @Environment(\.language) private var language
 
     struct Filter: Equatable {
         /// nil for every task.
-        var task: String?
+        var task: String? = nil
         var share: WeekReport.Share = .any
+        var app: String? = nil
+        var window: String? = nil
+    }
+
+    private var kinds: [TaskKind] {
+        (try? model.store.labelSetup().get().kinds) ?? (TaskKind.suggestions + [TaskKind.other])
     }
 
     var body: some View {
-        let screens = report.screens(task: filter.task, share: filter.share)
+        let screens = report.screens(task: filter.task, share: filter.share, app: filter.app, window: filter.window)
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Button(action: back) { Label(language("Your Week"), systemImage: "chevron.left") }
@@ -35,7 +42,7 @@ struct ScreensView: View {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], alignment: .leading, spacing: 18) {
                         ForEach(screens, id: \.session.start) { screen in
-                            ScreenCard(screen: screen, image: store.screenshot(of: screen.session))
+                            ScreenCard(screen: screen, image: model.store.screenshot(of: screen.session), kinds: kinds, model: model)
                         }
                     }
                 }
@@ -59,6 +66,23 @@ struct ScreensView: View {
             }
             .labelsHidden()
             .fixedSize()
+            if let app = filter.app {
+                let label = (filter.window?.isEmpty == false) ? "\(app) — \(filter.window!)" : app
+                HStack(spacing: 4) {
+                    Text(label).lineLimit(1).truncationMode(.middle)
+                    Button {
+                        filter.app = nil
+                        filter.window = nil
+                    } label: {
+                        Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.18)))
+            }
         }
     }
 }
@@ -67,13 +91,66 @@ struct ScreensView: View {
 private struct ScreenCard: View {
     let screen: WeekReport.Screen
     let image: URL
+    let kinds: [TaskKind]
+    let model: AppModel
     @Environment(\.language) private var language
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Thumbnail(url: image)
-            Text(place).lineLimit(1).truncationMode(.middle)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(place).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+                Menu {
+                    actions
+                } label: {
+                    Image(systemName: "ellipsis").foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
             Text(details).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .contextMenu { actions }
+    }
+
+    @ViewBuilder private var actions: some View {
+        Menu(language("Change Task")) {
+            ForEach(kinds, id: \.name) { kind in
+                Button {
+                    Task {
+                        await model.correctLabel(
+                            session: screen.session,
+                            work: kind.name == "leisure" ? 0 : max(screen.label.work, 0.9),
+                            automatable: kind.name == "leisure" ? 0 : screen.label.automatable,
+                            task: kind.name
+                        )
+                    }
+                } label: {
+                    if kind.name == screen.label.task {
+                        Label(language.name(ofKind: kind.name).capitalized(with: language.locale), systemImage: "checkmark")
+                    } else {
+                        Text(language.name(ofKind: kind.name).capitalized(with: language.locale))
+                    }
+                }
+            }
+        }
+        Button(language("Mark as Personal")) {
+            Task {
+                await model.correctLabel(session: screen.session, work: 0, automatable: 0, task: "leisure")
+            }
+        }
+        Divider()
+        if let bundleID = screen.session.bundleID, let app = screen.session.app {
+            Button(language("Exclude %@", app)) {
+                model.excludeApp(bundleID: bundleID)
+            }
+        }
+        Button(language("Forget This Session"), role: .destructive) {
+            Task {
+                await model.forget(from: screen.session.start, to: screen.session.end.addingTimeInterval(1))
+            }
         }
     }
 

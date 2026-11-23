@@ -59,8 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class WindowPresenter {
     private let model: AppModel
     private var windows: [String: NSWindow] = [:]
+    private var closeTokens: [String: NSObjectProtocol] = [:]
     private var noteShortcut: GlobalHotKey?
     private var whatsappTap: KeyWatcher?
+    private var waitForWhatsAppTrust: Task<Void, Never>?
     let dictation = DictationController()
 
     init(model: AppModel) {
@@ -84,15 +86,28 @@ final class WindowPresenter {
     }
 
     func showWeek() {
-        show("week", title: language("Your Week"), size: CGSize(width: 600, height: 680)) {
-            WeekView(store: self.model.store)
+        show("week", title: language("Your Week"), size: CGSize(width: 620, height: 680)) {
+            WeekView(model: self.model)
         }
     }
 
     func showSettings() {
-        show("settings", title: language("Screen Journal Settings"), size: CGSize(width: 700, height: 600)) {
+        show("settings", title: language("Screen Journal Settings"), size: CGSize(width: 720, height: 640)) {
             SettingsView(model: self.model, dictation: self.dictation, noteShortcutWorks: self.noteShortcutWorks) { [weak self] in self?.showGuide() }
         }
+    }
+
+    /// Asks for confirmation before permanently removing the last `minutes` of capture.
+    func confirmForgetRecent(minutes: Int) {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = language("Forget the last %@ minutes?", "\(minutes)")
+        alert.informativeText = language("This permanently deletes recent snapshots, text and screenshots from your journal.")
+        alert.addButton(withTitle: language("Forget"))
+        alert.addButton(withTitle: language("Cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await model.forgetRecent(minutes: minutes) }
     }
 
     /// Stays off when another app already holds the combination; the menu item still works.
@@ -104,8 +119,17 @@ final class WindowPresenter {
     var noteShortcutWorks: Bool { noteShortcut != nil }
 
     /// Tapping Left ⌘ alone while WhatsApp is in front; anywhere else it's in too many shortcuts to mean this.
-    /// Like dictation, it hears other apps' keys only with the Accessibility grant it had at launch.
+    /// Like dictation, waits for the Accessibility grant if it wasn't given yet at launch.
     func startWhatsAppTap() {
+        whatsappTap = nil
+        waitForWhatsAppTrust?.cancel()
+        guard WindowContext.isTrusted else {
+            waitForWhatsAppTrust = Task { [weak self] in
+                while !Task.isCancelled, !WindowContext.isTrusted { try? await Task.sleep(for: .seconds(2)) }
+                if !Task.isCancelled { self?.startWhatsAppTap() }
+            }
+            return
+        }
         let key = KeyWatcher.leftCommand
         whatsappTap = KeyWatcher(keyCode: key.keyCode, deviceMask: key.deviceMask) { [weak self] in
             guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == WhatsAppWindow.bundleID else { return }
@@ -146,15 +170,15 @@ final class WindowPresenter {
         }
         let chats = WhatsAppStore.chats()
         let open = WhatsApp.chat(named: WhatsAppWindow.openChatName(), among: (try? chats.get()) ?? [])
-        showPanel("whatsapp", title: language("Export WhatsApp chat")) {
+        showPanel("whatsapp", title: language("Export WhatsApp chat"), size: CGSize(width: 440, height: 340)) {
             WhatsAppExportView(chats: chats, open: open) { [weak self] in self?.close("whatsapp") }
         }
     }
 
     /// A floating panel that takes typing without activating the app.
-    private func showPanel<Content: View>(_ id: String, title: String, content: () -> Content) {
+    private func showPanel<Content: View>(_ id: String, title: String, size: CGSize = CGSize(width: 420, height: 170), content: () -> Content) {
         let panel = NotePanel(
-            contentRect: CGRect(origin: .zero, size: CGSize(width: 420, height: 170)),
+            contentRect: CGRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false
         )
         panel.title = title
@@ -201,8 +225,17 @@ final class WindowPresenter {
     private func track(_ window: NSWindow, as id: String) {
         window.isReleasedWhenClosed = false
         windows[id] = window
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { _ = self?.windows.removeValue(forKey: id) }
+        if let old = closeTokens.removeValue(forKey: id) {
+            NotificationCenter.default.removeObserver(old)
+        }
+        closeTokens[id] = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                _ = self.windows.removeValue(forKey: id)
+                if let token = self.closeTokens.removeValue(forKey: id) {
+                    NotificationCenter.default.removeObserver(token)
+                }
+            }
         }
     }
 

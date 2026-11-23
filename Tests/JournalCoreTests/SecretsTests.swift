@@ -30,4 +30,28 @@ struct SecretsTests {
         """
         #expect(Secrets.redact(text) == text)
     }
+
+    @Test func blanksBearerTokensOtpCodesCardsAndValidCpfs() {
+        let bearer = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345"
+        #expect(Secrets.redact(bearer) == "Authorization: Bearer [redacted]")
+
+        let otpEN = "Your verification code: 482910"
+        #expect(Secrets.redact(otpEN) == "Your verification code: [redacted]")
+
+        let otpPT = "Seu código de verificação é 739104"
+        #expect(Secrets.redact(otpPT) == "Seu código de verificação é [redacted]")
+
+        // Synthetic Luhn-valid test card (standard test Visa number)
+        let card = "Card 4111 1111 1111 1111 expires 12/29"
+        #expect(Secrets.redact(card) == "Card [redacted] expires 12/29")
+
+        // Synthetic check-digit-valid Brazilian CPF (123.456.789-09)
+        let cpf = "CPF 123.456.789-09 confirmado"
+        #expect(Secrets.redact(cpf) == "CPF [redacted] confirmado")
+    }
+
+    @Test func leavesInvalidCardsInvalidCpfsAndPhoneNumbersAlone() {
+        let text = "Phone 55 11 98765-4321 ref 4111 1111 1111 1112 cpf 123.456.789-00 id 0000-0000-0000-0000"
+        #expect(Secrets.redact(text) == text)
+    }
 }

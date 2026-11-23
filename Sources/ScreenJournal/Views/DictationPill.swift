@@ -1,4 +1,5 @@
 import AppKit
+import JournalCore
 import SwiftUI
 
 /// A dark capsule at the bottom of the screen. Connecting: dim dots, lit one after another, until the microphone
@@ -23,12 +24,14 @@ struct DictationPill: View {
                     TimelineView(.animation) { context in connecting(at: context.date.timeIntervalSinceReferenceDate) }
                 } else {
                     bars(mirrored(controller.levels))
+                    timer
                 }
                 button("trash", language("Delete"), action: controller.cancel)
             case .paused:
                 button("play.fill", language("Resume"), action: controller.togglePause)
                 if controller.isEditing { Image(systemName: "pencil").font(.callout.weight(.semibold)) }
                 bars(mirrored(controller.levels)).opacity(0.35)
+                timer.opacity(0.6)
                 button("trash", language("Delete"), action: controller.cancel)
             case .working:
                 TimelineView(.animation) { context in
@@ -49,6 +52,12 @@ struct DictationPill: View {
         .fixedSize()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.spring(response: 0.18, dampingFraction: 0.7), value: controller.levels)
+    }
+
+    private var timer: some View {
+        Text(DictationClock.format(controller.elapsedSeconds))
+            .font(.caption.monospacedDigit().weight(.medium))
+            .foregroundStyle(controller.isNearLimit ? .orange : .white.opacity(0.75))
     }
 
     private func button(_ symbol: String, _ name: String, action: @escaping () -> Void) -> some View {
@@ -114,8 +123,8 @@ struct DictationPill: View {
 /// Floats over every app without taking focus, so the text lands where her cursor was. Takes clicks only while recording, for its buttons.
 @MainActor
 final class DictationPillPanel {
-    /// Room around the capsule for its glow.
-    private static let size = CGSize(width: 300, height: 80)
+    /// Room around the capsule for its glow, timer, and longer notices.
+    private static let size = CGSize(width: 380, height: 80)
     private let panel: NSPanel
     private let controller: DictationController
 

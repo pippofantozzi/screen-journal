@@ -2,9 +2,9 @@ import JournalCore
 import SwiftUI
 
 /// Where her week went by kind of task, how much of it Claude could probably take over,
-/// and the windows to start with. Read-only: it shows the answers already in the journal.
+/// and the windows to start with. Clicking a task or candidate drills into its screenshots.
 struct WeekView: View {
-    let store: JournalStore
+    let model: AppModel
     @State private var lastDay: String
     @State private var phase: Phase = .loading
     /// Set while looking at the screenshots behind the numbers.
@@ -18,20 +18,23 @@ struct WeekView: View {
         case failed(String)
     }
 
-    init(store: JournalStore) {
-        self.store = store
-        today = store.day(of: Date())
+    init(model: AppModel) {
+        self.model = model
+        today = model.store.day(of: Date())
         _lastDay = State(initialValue: today)
     }
 
     var body: some View {
-        if case .loaded(let report) = phase, let filter = browsing {
-            ScreensView(report: report, store: store, filter: Binding { browsing ?? filter } set: { browsing = $0 }) { browsing = nil }
-                .padding(24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        } else {
-            summary
+        Group {
+            if case .loaded(let report) = phase, let filter = browsing {
+                ScreensView(report: report, model: model, filter: Binding { browsing ?? filter } set: { browsing = $0 }) { browsing = nil }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                summary
+            }
         }
+        .task(id: "\(lastDay)-\(model.journalRevision)") { await load() }
     }
 
     private var summary: some View {
@@ -46,7 +49,6 @@ struct WeekView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task(id: lastDay) { await load() }
     }
 
     private var header: some View {
@@ -76,24 +78,64 @@ struct WeekView: View {
             TaskBars(tasks: report.tasks, language: language) { browsing = .init(task: $0) }
             if !report.candidates.isEmpty { suggestions(report.candidates) }
         }
-        if report.unsorted >= 60, !report.tasks.isEmpty {
-            Text(language("Not sorted yet: %@. It shows up here once it's sorted.", hours(report.unsorted)))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        sortingStatus(report)
+    }
+
+    @ViewBuilder private func sortingStatus(_ report: WeekReport) -> some View {
+        let hasUnsorted = report.unsorted >= 60 || (report.tasks.isEmpty && report.tracked > 0)
+        if model.isSorting {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(language("Sorting sessions…")).font(.callout).foregroundStyle(.secondary)
+            }
+        } else {
+            if let error = model.lastSortError {
+                HStack(spacing: 8) {
+                    Text(language("Sorting paused: %@", error))
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                    Spacer(minLength: 0)
+                    Button(language("Sort Now")) { model.sortNow() }
+                        .controlSize(.small)
+                }
+            } else if hasUnsorted {
+                HStack(spacing: 8) {
+                    if report.unsorted >= 60, !report.tasks.isEmpty {
+                        Text(language("Not sorted yet: %@. It shows up here once it's sorted.", hours(report.unsorted)))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    if GatewayKey.isSaved {
+                        Button(language("Sort Now")) { model.sortNow() }
+                            .controlSize(.small)
+                    }
+                }
+            }
         }
     }
 
     private func suggestions(_ candidates: [Labeling.Candidate]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(language("Where Claude could help most")).font(.headline)
             ForEach(Array(candidates.enumerated()), id: \.offset) { index, c in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(index + 1).").foregroundStyle(.secondary).monospacedDigit()
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(c.window.isEmpty ? c.app : "\(c.app) — \(c.window)").lineLimit(1).truncationMode(.middle)
-                        Text("\(hours(c.seconds)) · \(language.name(ofKind: c.task))").font(.callout).foregroundStyle(.secondary)
+                Button {
+                    browsing = .init(app: c.app, window: c.window)
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(index + 1).").foregroundStyle(.secondary).monospacedDigit()
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.window.isEmpty ? c.app : "\(c.app) — \(c.window)").lineLimit(1).truncationMode(.middle)
+                            Text("\(hours(c.seconds)) · \(language.name(ofKind: c.task))").font(.callout).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                     }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -108,11 +150,11 @@ struct WeekView: View {
 
     private func step(_ days: Int) {
         guard let date = Hours.date(lastDay) else { return }
-        lastDay = min(today, store.day(of: date.addingTimeInterval(Double(days) * 86_400 + 43_200)))
+        lastDay = min(today, model.store.day(of: date.addingTimeInterval(Double(days) * 86_400 + 43_200)))
     }
 
     private func load() async {
-        let store = store, day = lastDay
+        let store = model.store, day = lastDay
         let result = await Task.detached { store.weekReport(endingOn: day) }.value
         switch result {
         case .success(let report): phase = .loaded(report)

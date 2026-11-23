@@ -21,31 +21,38 @@ struct WhatsAppStore {
 
     /// One-to-one chats and groups, most recent first.
     static func chats() -> Result<[WhatsApp.Chat], Failure> {
-        query("""
+        query { _ in
+            """
             SELECT Z_PK, ZPARTNERNAME, ZLASTMESSAGEDATE FROM ZWACHATSESSION
             WHERE ZSESSIONTYPE IN (0, 1) AND ZREMOVED = 0 AND ZPARTNERNAME IS NOT NULL
             ORDER BY ZLASTMESSAGEDATE DESC
-            """) { row in
+            """
+        } read: { row in
             WhatsApp.Chat(id: row.int(0), name: row.text(1) ?? "", lastMessage: epoch.addingTimeInterval(row.double(2)))
         }
     }
 
     /// The chat's last `count` messages that have something to export, oldest first.
-    /// A group member is named as saved in WhatsApp's contacts, else by their profile name;
+    /// A group member is named as saved in WhatsApp's contacts (when ContactsV2.sqlite is available), else by their profile name;
     /// `ZCONTACTNAME` is empty and a message's `ZPUSHNAME` is encoded.
     static func messages(in chat: WhatsApp.Chat, last count: Int) -> Result<[WhatsApp.Message], Failure> {
-        query("""
-            SELECT m.ZMESSAGEDATE, m.ZISFROMME, m.ZMESSAGETYPE, m.ZTEXT, i.ZTITLE, i.ZMEDIALOCALPATH,
-                   CASE WHEN g.Z_PK IS NOT NULL THEN COALESCE(
-                       (SELECT ZFULLNAME FROM contacts.ZWAADDRESSBOOKCONTACT WHERE ZLID = g.ZMEMBERJID OR ZWHATSAPPID = g.ZMEMBERJID LIMIT 1),
-                       (SELECT ZPUSHNAME FROM ZWAPROFILEPUSHNAME WHERE ZJID = g.ZMEMBERJID LIMIT 1),
-                       'Unknown') END
-            FROM ZWAMESSAGE m
-            LEFT JOIN ZWAMEDIAITEM i ON i.Z_PK = m.ZMEDIAITEM
-            LEFT JOIN ZWAGROUPMEMBER g ON g.Z_PK = m.ZGROUPMEMBER
-            WHERE m.ZCHATSESSION = \(chat.id) AND m.ZMESSAGETYPE IN (\(WhatsApp.exportedTypes.map(String.init).joined(separator: ",")))
-            ORDER BY m.ZMESSAGEDATE DESC LIMIT \(max(0, count))
-            """) { row -> WhatsApp.Message in
+        query { hasContacts in
+            let contactLookup = hasContacts
+                ? "(SELECT ZFULLNAME FROM contacts.ZWAADDRESSBOOKCONTACT WHERE ZLID = g.ZMEMBERJID OR ZWHATSAPPID = g.ZMEMBERJID LIMIT 1),"
+                : ""
+            return """
+                SELECT m.ZMESSAGEDATE, m.ZISFROMME, m.ZMESSAGETYPE, m.ZTEXT, i.ZTITLE, i.ZMEDIALOCALPATH,
+                       CASE WHEN g.Z_PK IS NOT NULL THEN COALESCE(
+                           \(contactLookup)
+                           (SELECT ZPUSHNAME FROM ZWAPROFILEPUSHNAME WHERE ZJID = g.ZMEMBERJID LIMIT 1),
+                           'Unknown') END
+                FROM ZWAMESSAGE m
+                LEFT JOIN ZWAMEDIAITEM i ON i.Z_PK = m.ZMEDIAITEM
+                LEFT JOIN ZWAGROUPMEMBER g ON g.Z_PK = m.ZGROUPMEMBER
+                WHERE m.ZCHATSESSION = \(chat.id) AND m.ZMESSAGETYPE IN (\(WhatsApp.exportedTypes.map(String.init).joined(separator: ",")))
+                ORDER BY m.ZMESSAGEDATE DESC LIMIT \(max(0, count))
+                """
+        } read: { row -> WhatsApp.Message in
             var media: WhatsApp.Media?
             if case .media(let kind) = WhatsApp.content(ofType: Int(row.int(2))) {
                 let file = row.text(5).flatMap { FileManager.default.fileExists(atPath: messageFolder.appending(path: $0).path) ? $0 : nil }
@@ -70,17 +77,24 @@ struct WhatsAppStore {
     }
 
     /// Read-only but WAL-aware, so the latest messages count even before WhatsApp checkpoints them.
-    private static func query<T>(_ sql: String, _ read: (Row) -> T) -> Result<[T], Failure> {
+    /// Attaches ContactsV2.sqlite when present; missing contacts DB gracefully falls back to profile names.
+    private static func query<T>(_ makeSQL: (_ hasContacts: Bool) -> String, read: (Row) -> T) -> Result<[T], Failure> {
         let file = container.appending(path: "ChatStorage.sqlite")
         guard FileManager.default.fileExists(atPath: file.path) else { return .failure(.notInstalled) }
         var db: OpaquePointer?
         defer { sqlite3_close(db) }
-        let contacts = container.appending(path: "ContactsV2.sqlite").path.replacingOccurrences(of: "'", with: "''")
-        guard sqlite3_open_v2(file.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              sqlite3_exec(db, "ATTACH DATABASE '\(contacts)' AS contacts", nil, nil, nil) == SQLITE_OK
-        else {
+        guard sqlite3_open_v2(file.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
             return .failure(.unreadable(String(cString: sqlite3_errmsg(db))))
         }
+        let contactsFile = container.appending(path: "ContactsV2.sqlite")
+        let hasContacts: Bool
+        if FileManager.default.fileExists(atPath: contactsFile.path) {
+            let escaped = contactsFile.path.replacingOccurrences(of: "'", with: "''")
+            hasContacts = sqlite3_exec(db, "ATTACH DATABASE '\(escaped)' AS contacts", nil, nil, nil) == SQLITE_OK
+        } else {
+            hasContacts = false
+        }
+        let sql = makeSQL(hasContacts)
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {

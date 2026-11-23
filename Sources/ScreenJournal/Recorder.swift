@@ -25,6 +25,7 @@ final class Recorder {
     }
 
     private let store: JournalStore
+    private let worker: JournalWorker
     private let lock = LockWatcher()
     private let ownBundleID = Bundle.main.bundleIdentifier
     private var open: [Int: FrameRecord] = [:]
@@ -33,8 +34,9 @@ final class Recorder {
     private var unsettled: Set<Int> = []
     private var lastGate: CaptureGate?
 
-    init(store: JournalStore) {
+    init(store: JournalStore, worker: JournalWorker) {
         self.store = store
+        self.worker = worker
     }
 
     /// The open record on the display holding the frontmost app.
@@ -52,22 +54,23 @@ final class Recorder {
         logTransition(to: gate, at: now, app: frontmost?.localizedName)
 
         if case .skip(let reason) = gate {
-            closeAll(at: now)
+            await closeAll(at: now)
             return .skipped(reason)
         }
         guard SystemAccess.hasScreenAccess else {
-            closeAll(at: now)
+            await closeAll(at: now)
             return .noScreenAccess
         }
 
         do {
             let shots = try await ScreenCapturer.captureAll(excludingBundleIDs: policy.excludedBundleIDs)
-            for gone in Set(open.keys).subtracting(shots.map(\.index)) { close(display: gone, at: now) }
+            for gone in Set(open.keys).subtracting(shots.map(\.index)) { await close(display: gone, at: now) }
             let focusedDisplay = frontWindow.flatMap { w in
                 shots.first { $0.bounds.contains(CGPoint(x: w.bounds.midX, y: w.bounds.midY)) }?.index
             } ?? 1
             let frontmostAfter = ActivityReader.frontmost
             let windowsAfter = ActivityReader.windows()
+            let today = store.day(of: now)
             var kept = 0
             for shot in shots {
                 let focused = shot.index == focusedDisplay
@@ -82,9 +85,15 @@ final class Recorder {
                 if !settled && unsettled.insert(shot.index).inserted { continue }
                 unsettled.remove(shot.index)
                 let top = after
-                let signature = FrameSignature(thumbnail: ImageCodec.thumbnail(of: shot.image), bundleID: top?.bundleID, windowTitle: top?.title)
+                let image = shot.image
+                let thumbnail = await Task.detached(priority: .utility) { ImageCodec.thumbnail(of: image) }.value
+                let signature = FrameSignature(thumbnail: thumbnail, bundleID: top?.bundleID, windowTitle: top?.title)
                 let previous = memory[shot.index]
-                switch policy.decide(current: signature, previous: previous?.signature, lastImageAt: previous?.imageAt, now: now) {
+                let dayChanged = previous.map { $0.day != today } ?? false
+                let decision = dayChanged
+                    ? FrameDecision.record(saveImage: true)
+                    : policy.decide(current: signature, previous: previous?.signature, lastImageAt: previous?.imageAt, now: now)
+                switch decision {
                 case .unchanged:
                     open[shot.index]?.end = now
                 case .record(let saveImage):
@@ -96,19 +105,29 @@ final class Recorder {
             }
             return .captured(kept: kept)
         } catch {
-            closeAll(at: now)
+            await closeAll(at: now)
             return .failed(error)
         }
     }
 
     func record(_ event: EventRecord) {
-        try? store.append(event)
+        Task { await worker.append(event) }
     }
 
-    /// Writes every open frame and forgets each display's history, so the next frame after a gap is a full record.
-    /// Call before quitting or when capture stops.
-    func closeAll(at date: Date) {
-        for display in open.keys { close(display: display, at: date) }
+    /// Writes every open frame asynchronously and forgets each display's history, so the next frame after a gap is a full record.
+    func closeAll(at date: Date) async {
+        for display in Array(open.keys) { await close(display: display, at: date) }
+        memory.removeAll()
+        unsettled.removeAll()
+    }
+
+    /// Synchronous flush for app termination when background tasks will not outlive the process.
+    func closeAllSync(at date: Date) {
+        for display in Array(open.keys) {
+            guard var frame = open.removeValue(forKey: display) else { continue }
+            frame.end = max(frame.end, date)
+            try? store.append(frame)
+        }
         memory.removeAll()
         unsettled.removeAll()
     }
@@ -117,7 +136,7 @@ final class Recorder {
         _ shot: DisplayShot, top: WindowInfo?, focused: Bool, pid: pid_t?, signature: FrameSignature,
         freshImage: (_ newLineCount: Int) -> Bool, at now: Date
     ) async throws {
-        close(display: shot.index, at: now)
+        await close(display: shot.index, at: now)
         let id = DayStamp(now, in: store.timeZone).frameID(display: shot.index)
         let previous = memory[shot.index]
 
@@ -138,7 +157,12 @@ final class Recorder {
 
         // Image paths are relative to the day folder, so a new day always gets its own image.
         let shared = previous.flatMap { !freshImage(newLines.count) && store.day(of: $0.imageAt) == day ? $0 : nil }
-        let image = try shared?.image ?? store.writeImage(shot.image, id: id, at: now)
+        let image: String
+        if let reused = shared?.image {
+            image = reused
+        } else {
+            image = try await worker.writeImage(shot.image, id: id, at: now)
+        }
 
         memory[shot.index] = DisplayMemory(signature: signature, title: title, seen: seen, day: day, image: image, imageAt: shared?.imageAt ?? now)
         open[shot.index] = FrameRecord(
@@ -165,10 +189,10 @@ final class Recorder {
         return WindowInfo(app: name, bundleID: app?.bundleIdentifier, title: nil, bounds: bounds, layer: 0)
     }
 
-    private func close(display: Int, at date: Date) {
+    private func close(display: Int, at date: Date) async {
         guard var frame = open.removeValue(forKey: display) else { return }
         frame.end = max(frame.end, date)
-        try? store.append(frame)
+        await worker.append(frame)
     }
 
     private func logTransition(to gate: CaptureGate, at date: Date, app: String?) {

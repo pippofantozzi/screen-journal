@@ -15,19 +15,34 @@ final class KeyWatcher {
     private let deviceMask: UInt
     private let onTap: () -> Void
     private let onDoubleTap: (() -> Void)?
+    private let shouldWaitForDoubleTap: () -> Bool
     private let onEscape: () -> Void
     private var tap = ModifierTap()
     private var gesture = ModifierGesture()
     private var pendingTap: Task<Void, Never>?
     private var monitors: [Any] = []
 
-    convenience init(key: DictationKey, onTap: @escaping () -> Void, onDoubleTap: @escaping () -> Void, onEscape: @escaping () -> Void) {
-        self.init(keyCode: key.keyCode, deviceMask: key.deviceMask, onDoubleTap: onDoubleTap, onTap: onTap, onEscape: onEscape)
+    convenience init(
+        key: DictationKey,
+        shouldWaitForDoubleTap: @escaping () -> Bool = { true },
+        onTap: @escaping () -> Void,
+        onDoubleTap: @escaping () -> Void,
+        onEscape: @escaping () -> Void
+    ) {
+        self.init(keyCode: key.keyCode, deviceMask: key.deviceMask, shouldWaitForDoubleTap: shouldWaitForDoubleTap, onDoubleTap: onDoubleTap, onTap: onTap, onEscape: onEscape)
     }
 
-    init(keyCode: UInt16?, deviceMask: UInt, onDoubleTap: (() -> Void)? = nil, onTap: @escaping () -> Void, onEscape: @escaping () -> Void = {}) {
+    init(
+        keyCode: UInt16?,
+        deviceMask: UInt,
+        shouldWaitForDoubleTap: @escaping () -> Bool = { true },
+        onDoubleTap: (() -> Void)? = nil,
+        onTap: @escaping () -> Void,
+        onEscape: @escaping () -> Void = {}
+    ) {
         self.keyCode = keyCode
         self.deviceMask = deviceMask
+        self.shouldWaitForDoubleTap = shouldWaitForDoubleTap
         self.onTap = onTap
         self.onDoubleTap = onDoubleTap
         self.onEscape = onEscape
@@ -48,10 +63,13 @@ final class KeyWatcher {
     private func handle(_ event: NSEvent) {
         if event.type == .keyDown && event.keyCode == Self.escape { onEscape() }
         let kind = kind(of: event)
-        guard let onDoubleTap else {
+        guard let onDoubleTap, shouldWaitForDoubleTap() else {
+            pendingTap?.cancel()
+            _ = gesture.feed(.other, at: event.timestamp)
             if tap.feed(kind, at: event.timestamp) { onTap() }
             return
         }
+        _ = tap.feed(.other, at: event.timestamp)
         switch gesture.feed(kind, at: event.timestamp) {
         case .wait:
             pendingTap?.cancel()

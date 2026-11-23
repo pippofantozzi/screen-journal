@@ -18,7 +18,7 @@ public struct CaptureConditions: Equatable, Sendable {
 }
 
 public enum SkipReason: String, Codable, Sendable {
-    case paused, locked, idle, excludedApp, privateWindow
+    case paused, locked, idle, excludedApp, privateWindow, excludedTitle
 
     /// The event that opens this kind of gap in the journal.
     public var eventKind: EventRecord.Kind {
@@ -26,7 +26,7 @@ public enum SkipReason: String, Codable, Sendable {
         case .paused: .paused
         case .locked: .locked
         case .idle: .idle
-        case .excludedApp, .privateWindow: .skipped
+        case .excludedApp, .privateWindow, .excludedTitle: .skipped
         }
     }
 }
@@ -66,20 +66,29 @@ public struct CapturePolicy: Sendable {
     /// Small changes still save an image at most this often.
     public var imageInterval: TimeInterval
     public var privateTitleMarkers: [String]
+    /// User-defined words in a window title (e.g. a bank name or portal) that skip capture.
+    public var excludedTitleKeywords: [String]
     /// This many new OCR lines earn a fresh image even when the pixels barely moved (a page finished loading).
     public var freshImageLines: Int
+
+    public static let defaultPrivateTitleMarkers = [
+        "Private Browsing", "Incognito", "InPrivate", "Private Window",
+        "Navegação Privada", "Janela Privada", "Janela anônima", "Anônima", "Modo anônimo",
+    ]
 
     public init(
         idleThreshold: Double = 120,
         excludedBundleIDs: Set<String> = [],
+        excludedTitleKeywords: [String] = [],
         minChangeRatio: Double = 0.002,
         bigChangeRatio: Double = 0.15,
         imageInterval: TimeInterval = 60,
-        privateTitleMarkers: [String] = ["Private Browsing", "Incognito", "InPrivate", "Private Window"],
+        privateTitleMarkers: [String] = CapturePolicy.defaultPrivateTitleMarkers,
         freshImageLines: Int = 10
     ) {
         self.idleThreshold = idleThreshold
         self.excludedBundleIDs = excludedBundleIDs
+        self.excludedTitleKeywords = excludedTitleKeywords
         self.minChangeRatio = minChangeRatio
         self.bigChangeRatio = bigChangeRatio
         self.imageInterval = imageInterval
@@ -93,6 +102,7 @@ public struct CapturePolicy: Sendable {
         if c.idleSeconds >= idleThreshold { return .skip(.idle) }
         if let app = c.frontmostBundleID, excludedBundleIDs.contains(app) { return .skip(.excludedApp) }
         if isPrivate(c.frontmostWindowTitle) { return .skip(.privateWindow) }
+        if isExcludedTitle(c.frontmostWindowTitle) { return .skip(.excludedTitle) }
         return .capture
     }
 
@@ -116,6 +126,14 @@ public struct CapturePolicy: Sendable {
 
     private func isPrivate(_ title: String?) -> Bool {
         guard let title else { return false }
-        return privateTitleMarkers.contains { title.range(of: $0, options: .caseInsensitive) != nil }
+        return privateTitleMarkers.contains { title.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
+
+    private func isExcludedTitle(_ title: String?) -> Bool {
+        guard let title else { return false }
+        return excludedTitleKeywords
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .contains { title.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
     }
 }

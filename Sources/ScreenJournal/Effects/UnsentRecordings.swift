@@ -23,7 +23,35 @@ enum UnsentRecordings {
         return names.filter { $0.hasSuffix(".wav") }.sorted(by: >).map { folder.appending(path: $0) }
     }
 
+    /// Already-transcribed chunks for a saved recording, so retrying a multi-piece recording only re-sends failed pieces.
+    static func chunks(for wavURL: URL) -> [Int: String] {
+        guard let data = try? Data(contentsOf: chunkURL(for: wavURL)),
+              let raw = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return [:] }
+        var result: [Int: String] = [:]
+        for (key, value) in raw {
+            if let index = Int(key) { result[index] = value }
+        }
+        return result
+    }
+
+    static func saveChunks(_ chunks: [Int: String], for wavURL: URL) {
+        guard !chunks.isEmpty else { return }
+        let keyed = Dictionary(uniqueKeysWithValues: chunks.map { (String($0.key), $0.value) })
+        guard let data = try? JSONEncoder().encode(keyed) else { return }
+        try? data.write(to: chunkURL(for: wavURL), options: .atomic)
+    }
+
     static func discard(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: chunkURL(for: url))
+    }
+
+    static func discardNewest() {
+        if let newest = all().first { discard(newest) }
+    }
+
+    private static func chunkURL(for wavURL: URL) -> URL {
+        wavURL.deletingPathExtension().appendingPathExtension("chunks.json")
     }
 }

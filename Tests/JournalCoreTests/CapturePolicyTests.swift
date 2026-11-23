@@ -42,6 +42,25 @@ struct CapturePolicyTests {
         #expect(policy.gate(c) == .skip(.privateWindow))
     }
 
+    @Test func skipsPortuguesePrivateBrowsingWindowsWithOrWithoutAccents() {
+        for title in ["Safari — Navegação Privada", "Chrome — Janela anônima", "Chrome — Janela Anonima", "Firefox — Janela Privada"] {
+            var c = active
+            c.frontmostWindowTitle = title
+            #expect(policy.gate(c) == .skip(.privateWindow), "\(title)")
+        }
+    }
+
+    @Test func skipsWindowsMatchingUserExcludedKeywords() {
+        let custom = CapturePolicy(excludedTitleKeywords: ["Nubank", "Prontuário"])
+        var bank = active
+        bank.frontmostWindowTitle = "Conta nubank — Chrome"
+        #expect(custom.gate(bank) == .skip(.excludedTitle))
+        var health = active
+        health.frontmostWindowTitle = "Prontuario médico"
+        #expect(custom.gate(health) == .skip(.excludedTitle))
+        #expect(SkipReason.excludedTitle.eventKind == .skipped)
+    }
+
     @Test func excludedAppWinsOverPrivateWindow() {
         var c = active
         c.frontmostBundleID = "com.1password.1password"

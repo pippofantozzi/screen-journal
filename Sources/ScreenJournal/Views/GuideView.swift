@@ -143,6 +143,10 @@ private struct CopyableCommand: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(command, forType: .string)
                 withAnimation(.spring(duration: 0.3)) { copied = true }
+                Task {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    withAnimation(.spring(duration: 0.3)) { copied = false }
+                }
             } label: {
                 Label(copied ? language("Copied") : language("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc")
                     .contentTransition(.symbolEffect(.replace))

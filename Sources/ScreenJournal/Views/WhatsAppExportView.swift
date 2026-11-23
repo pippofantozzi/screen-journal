@@ -7,8 +7,12 @@ struct WhatsAppExportView: View {
     let chats: Result<[WhatsApp.Chat], WhatsAppStore.Failure>
     let onDone: () -> Void
     @State private var chat: WhatsApp.Chat?
+    @State private var search = ""
+    @State private var transcribeVoiceNotes = true
     @AppStorage(Preferences.whatsappLast) private var count = 200
     @State private var state = SaveState.ready
+    @State private var progress: (done: Int, total: Int)?
+    @State private var exportTask: Task<Void, Never>?
     @Environment(\.language) private var language
 
     enum SaveState: Equatable {
@@ -28,16 +32,26 @@ struct WhatsAppExportView: View {
         VStack(alignment: .leading, spacing: 12) {
             switch chats {
             case .success(let all):
-                Picker(language("Chat"), selection: $chat) {
-                    ForEach(choices(all)) { Text($0.name).tag(Optional($0)) }
+                TextField(language("Search chats…"), text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(state == .saving)
+                List(choices(all), selection: $chat) { item in
+                    Text(item.name).lineLimit(1).tag(item)
                 }
+                .listStyle(.bordered)
+                .frame(minHeight: 110, maxHeight: 150)
+                .disabled(state == .saving)
                 HStack {
                     Text(language("Last"))
                     TextField("", value: $count, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 72)
                         .onSubmit(save)
+                        .disabled(state == .saving)
                     Text(language("messages"))
+                    Spacer()
+                    Toggle(language("Transcribe voice notes"), isOn: $transcribeVoiceNotes)
+                        .disabled(state == .saving)
                 }
             case .failure(let failure):
                 Text(message(.store(failure)))
@@ -50,7 +64,7 @@ struct WhatsAppExportView: View {
                 if case .saved = state {
                     Button(language("Done"), action: onDone).keyboardShortcut(.defaultAction)
                 } else {
-                    Button(language("Cancel"), action: onDone).keyboardShortcut(.cancelAction)
+                    Button(language("Cancel"), action: cancelExport).keyboardShortcut(.cancelAction)
                     Button(language("Export"), action: save)
                         .keyboardShortcut(.defaultAction)
                         .disabled(chat == nil || count < 1 || state == .saving)
@@ -58,11 +72,16 @@ struct WhatsAppExportView: View {
             }
         }
         .padding(20)
+        .onDisappear { exportTask?.cancel() }
     }
 
-    /// The 40 latest, plus the open chat when it's older.
+    /// Searches across all chats when typing; otherwise shows the 50 latest plus the currently selected chat.
     private func choices(_ all: [WhatsApp.Chat]) -> [WhatsApp.Chat] {
-        let recent = Array(all.prefix(40))
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            return Array(all.filter { $0.name.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil }.prefix(50))
+        }
+        let recent = Array(all.prefix(50))
         guard let chat, !recent.contains(chat) else { return recent }
         return [chat] + recent
     }
@@ -70,7 +89,12 @@ struct WhatsAppExportView: View {
     private var statusLine: String? {
         switch state {
         case .ready: nil
-        case .saving: language("Saving…")
+        case .saving:
+            if let progress, progress.total > 0 {
+                language("Transcribing voice notes (%@/%@)…", "\(progress.done)", "\(progress.total)")
+            } else {
+                language("Saving…")
+            }
         case .saved(let saved):
             [saved.missing > 0 ? language("Saved. %@ media files were never downloaded to this Mac and are marked omitted.", "\(saved.missing)") : nil,
              saved.untranscribed > 0 ? language("%@ voice notes couldn't be transcribed.", "\(saved.untranscribed)") : nil]
@@ -84,20 +108,36 @@ struct WhatsAppExportView: View {
         case .store(.notInstalled): language("WhatsApp for Mac isn't set up on this Mac.")
         case .store(.unreadable(let reason)): language("Can't read WhatsApp's messages: %@", reason)
         case .writing(let reason): language("Couldn't save the zip: %@", reason)
+        case .cancelled: language("Export cancelled.")
         }
+    }
+
+    private func cancelExport() {
+        exportTask?.cancel()
+        exportTask = nil
+        onDone()
     }
 
     /// Transcribing voice notes and copying media can take a while, so it runs off the main thread; Finder shows the zip when it's done.
     private func save() {
         guard let chat, count > 0, state != .saving else { return }
         state = .saving
+        progress = nil
         let count = count
-        Task {
-            let result = await Task.detached { await WhatsAppArchive.save(chat, last: count) }.value
+        let transcribe = transcribeVoiceNotes
+        exportTask = Task {
+            let result = await WhatsAppArchive.save(chat, last: count, transcribeVoiceNotes: transcribe) { done, total in
+                Task { @MainActor in
+                    self.progress = (done, total)
+                }
+            }
+            guard !Task.isCancelled else { return }
             switch result {
             case .success(let saved):
                 NSWorkspace.shared.activateFileViewerSelecting([saved.zip])
                 if saved.missing == 0 && saved.untranscribed == 0 { onDone() } else { state = .saved(saved) }
+            case .failure(.cancelled):
+                state = .ready
             case .failure(let failure):
                 state = .failed(failure)
             }

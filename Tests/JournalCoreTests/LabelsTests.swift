@@ -241,6 +241,12 @@ struct WeekScreensTests {
     @Test func halfIsEnoughToCountAsLikely() {
         #expect(WeekReport.Screen(session: invoice, label: label(invoice, automatable: 0.5)).isLikely)
     }
+
+    @Test func narrowsToASpecificAppAndWindow() {
+        #expect(report.screens(task: nil, share: .any, app: "Sheets", window: "Invoices").map(\.session) == [invoice])
+        #expect(report.screens(task: nil, share: .any, app: "Sheets", window: "Other").isEmpty)
+        #expect(report.screens(task: nil, share: .any, app: "CapCut", window: nil).map(\.session) == [reel])
+    }
 }
 
 struct SessionStateTests {

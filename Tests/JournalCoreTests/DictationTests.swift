@@ -289,3 +289,13 @@ struct RecordingPiecesTests {
         #expect((24 * rate...25 * rate).contains(first.count))
     }
 }
+
+struct DictationClockTests {
+    @Test func formatsMinutesAndZeroPaddedSeconds() {
+        #expect(DictationClock.format(-2) == "0:00")
+        #expect(DictationClock.format(0) == "0:00")
+        #expect(DictationClock.format(5.9) == "0:05")
+        #expect(DictationClock.format(84) == "1:24")
+        #expect(DictationClock.format(14 * 60 + 30) == "14:30")
+    }
+}

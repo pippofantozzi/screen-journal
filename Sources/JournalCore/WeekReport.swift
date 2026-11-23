@@ -62,9 +62,14 @@ public struct WeekReport: Equatable, Sendable {
         }
     }
 
-    /// `task` nil for every task.
-    public func screens(task: String?, share: Share) -> [Screen] {
-        sorted.filter { (task == nil || $0.label.task == task) && share.admits($0) }
+    /// `task`, `app`, and `window` nil mean no filter on that dimension.
+    public func screens(task: String?, share: Share, app: String? = nil, window: String? = nil) -> [Screen] {
+        sorted.filter { screen in
+            guard (task == nil || screen.label.task == task), share.admits(screen) else { return false }
+            if let app, (screen.session.app ?? "Unknown") != app { return false }
+            if let window, (screen.session.windowTitle ?? "") != window { return false }
+            return true
+        }
     }
 }
 

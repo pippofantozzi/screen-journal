@@ -3,7 +3,7 @@ import Foundation
 import JournalCore
 
 /// The journal folder on disk. Every file write in the app goes through here.
-struct JournalStore {
+struct JournalStore: Sendable {
     /// One day's source rows, plus its derived sessions.
     struct DayRows {
         let frames: [FrameRecord]
@@ -202,6 +202,59 @@ struct JournalStore {
         }
     }
 
+    /// Bytes on disk across all days.
+    func totalSize() -> Int64 {
+        dayNames().reduce(0) { $0 + size(day: $1) }
+    }
+
+    /// Permanently removes a local time range from all overlapping days, deletes its screenshots, rebuilds summaries and prunes labels.
+    /// Returns the number of removed frames.
+    @discardableResult
+    func forget(from: Date, to: Date) throws -> Int {
+        let first = day(of: from.addingTimeInterval(-86_400))
+        let last = day(of: to)
+        let days = dayNames().sorted().filter { $0 >= first && $0 <= last }
+        var removed = 0
+        for day in days {
+            let rows = try self.rows(day: day)
+            let onDisk = imagesOnDisk(day: day)
+            let plan = Forget.plan(
+                frames: rows.frames, events: rows.events, sessions: rows.sessions,
+                imagesOnDisk: onDisk, target: .range(from: from, to: to)
+            )
+            let removedCount = rows.frames.count - plan.frames.count
+            let changed = removedCount > 0 || rows.events.count != plan.events.count || !plan.deleteImages.isEmpty
+            guard changed else { continue }
+            removed += removedCount
+            try rewrite(day: day, frames: plan.frames, events: plan.events, sessions: plan.sessions)
+            deleteImages(plan.deleteImages, day: day)
+            try summarize(day: day)
+            try pruneLabels(day: day)
+        }
+        return removed
+    }
+
+    /// Slims redundant screenshots on past days older than `keepFullDays` (never touching today),
+    /// keeping session representatives, visit starts, notes and all OCR text.
+    func tidyOldDays(keepFullDays: Int, today: String) {
+        guard keepFullDays >= 1 else { return }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let cutoff = calendar.date(byAdding: .day, value: -keepFullDays, to: Date()).map(day(of:)) ?? today
+        let old = dayNames().sorted().filter { $0 < min(cutoff, today) }
+        for day in old {
+            guard let rows = try? self.rows(day: day) else { continue }
+            let plan = Tidy.plan(
+                frames: rows.frames, sessions: rows.sessions,
+                notes: rows.events.filter { $0.kind == .note }, imagesOnDisk: imagesOnDisk(day: day)
+            )
+            guard case let .slim(images, frames) = plan, !images.isEmpty else { continue }
+            if (try? rewrite(day: day, frames: frames, events: rows.events, sessions: rows.sessions)) != nil {
+                deleteImages(images, day: day)
+            }
+        }
+    }
+
     func purge(keepDays: Int, today: String) throws {
         for day in RetentionPolicy.expiredDays(dayNames(), today: today, keep: keepDays) {
             try FileManager.default.removeItem(at: dayDir(day))
@@ -247,5 +300,61 @@ struct JournalStore {
         defer { try? handle.close() }
         try handle.seekToEnd()
         try handle.write(contentsOf: Data((line + "\n").utf8))
+    }
+}
+
+/// Serializes journal disk I/O off the main actor so summarization, tidying, forgetting and image writes
+/// never hitch the UI or global key monitors and never race each other on day files.
+actor JournalWorker {
+    let store: JournalStore
+
+    init(store: JournalStore) {
+        self.store = store
+    }
+
+    func append(_ frame: FrameRecord) {
+        try? store.append(frame)
+    }
+
+    func append(_ event: EventRecord) {
+        try? store.append(event)
+    }
+
+    func writeImage(_ image: CGImage, id: String, at date: Date) throws -> String {
+        try store.writeImage(image, id: id, at: date)
+    }
+
+    func summarize(day: String) {
+        try? store.summarize(day: day)
+    }
+
+    func catchUp(today: String, retentionDays: Int, autoTidyDays: Int?) {
+        for day in store.unsummarizedDays(before: today) {
+            try? store.summarize(day: day)
+        }
+        if let autoTidyDays {
+            store.tidyOldDays(keepFullDays: autoTidyDays, today: today)
+        }
+        try? store.purge(keepDays: max(1, retentionDays), today: today)
+    }
+
+    func forget(from: Date, to: Date) throws -> Int {
+        try store.forget(from: from, to: to)
+    }
+
+    func appendLabels(_ labels: [Label], day: String) throws {
+        try store.append(labels, day: day)
+    }
+
+    func frameCount(day: String) -> Int {
+        store.frameCount(day: day)
+    }
+
+    func size(day: String) -> Int64 {
+        store.size(day: day)
+    }
+
+    func totalSize() -> Int64 {
+        store.totalSize()
     }
 }

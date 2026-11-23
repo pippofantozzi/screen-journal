@@ -1,13 +1,15 @@
 import JournalCore
 import SwiftUI
 
-/// The key that starts dictation, the words it should know, and what it still needs to work.
+/// The key that starts dictation, the microphone and language, the words it should know, and what it still needs to work.
 struct DictationSettings: View {
     let dictation: DictationController
     @AppStorage(Preferences.dictationKey) private var key = DictationKey.rightCommand
     @AppStorage(Preferences.dictationLanguage) private var spoken = DictationLanguage.default
+    @AppStorage(Preferences.dictationMicrophone) private var microphoneUID = ""
     @Environment(\.language) private var language
     @State private var words = Preferences.currentDictationWords
+    @State private var inputs = AudioInputs.available()
     @State private var draft = ""
     @State private var micAllowed = Microphone.isAllowed
     @State private var trusted = WindowContext.isTrusted
@@ -35,6 +37,15 @@ struct DictationSettings: View {
                     Text(language("English")).tag(DictationLanguage.english)
                     Text(language("Automatic")).tag(DictationLanguage.automatic)
                 }
+                Picker(language("Microphone"), selection: $microphoneUID) {
+                    Text(language("Automatic (avoids Bluetooth)")).tag("")
+                    if !inputs.isEmpty {
+                        Divider()
+                        ForEach(inputs) { input in
+                            Text(input.name).tag(input.id)
+                        }
+                    }
+                }
             }
 
             Section {
@@ -60,6 +71,7 @@ struct DictationSettings: View {
             while !Task.isCancelled {
                 micAllowed = Microphone.isAllowed
                 trusted = WindowContext.isTrusted
+                inputs = AudioInputs.available()
                 try? await Task.sleep(for: .seconds(1))
             }
         }
@@ -104,10 +116,10 @@ struct DictationSettings: View {
 
     private func cap(_ name: String) -> some View {
         Text(name)
-                        .font(.callout.weight(.medium))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.5)))
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.5)))
     }
 
     private func chip(_ word: String) -> some View {

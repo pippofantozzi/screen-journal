@@ -220,6 +220,14 @@ public enum Silence {
     }
 }
 
+/// Elapsed recording time for the dictation pill, e.g. `0:05`, `1:24`, `14:30`.
+public enum DictationClock {
+    public static func format(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded(.down)))
+        return "\(total / 60):\(String(format: "%02d", total % 60))"
+    }
+}
+
 /// How loud a stretch of recording sounds, 0–1, for the pill. On a decibel scale, as ears hear it:
 /// a linear one leaves ordinary speech at a few percent, and the bars look dead.
 public enum Loudness {
