@@ -12,6 +12,8 @@ SPARKLE_BIN=".build/artifacts/sparkle/Sparkle/bin"
 ZIP="build/ScreenJournal.zip"
 
 [ -z "$(git status --porcelain)" ] || { echo "Commit or stash changes first."; exit 1; }
+# The release rebuilds build/ScreenJournal.app; a copy running from there would lose its files mid-run and fail to update.
+! pgrep -f "$PWD/build/ScreenJournal.app/" >/dev/null || { echo "Quit the Screen Journal running from build/ first."; exit 1; }
 
 OWNER="${REPO%%/*}"
 export VERSION
