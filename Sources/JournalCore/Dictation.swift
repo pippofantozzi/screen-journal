@@ -88,7 +88,7 @@ public struct ModifierTap: Sendable {
     }
 }
 
-/// Wait briefly after a tap so a second tap can choose a text improvement instead of dictation.
+/// Wait briefly after a tap so a second tap can pause a recording instead of ending it.
 public struct ModifierGesture: Sendable {
     public enum Action: Equatable, Sendable { case none, wait, single, double }
     public static let interval: TimeInterval = 0.35
@@ -139,6 +139,42 @@ public enum WAV {
             for sample in buffer { append(sample) }
         }
         return data
+    }
+
+    /// The samples of a WAV that `encode` wrote.
+    public static func samples(of wav: Data) -> [Int16] {
+        let body = wav.dropFirst(44)
+        return stride(from: body.startIndex, to: body.endIndex - 1, by: 2).map { i in
+            Int16(bitPattern: UInt16(body[i]) | UInt16(body[i + 1]) << 8)
+        }
+    }
+}
+
+/// A long recording cut into pieces the transcriber takes comfortably. Each cut falls at the quietest
+/// tenth of a second shortly before the limit, between words rather than through one.
+public enum RecordingPieces {
+    public static func split(_ samples: [Int16], sampleRate: Int, longest: TimeInterval, searching back: TimeInterval = 10) -> [[Int16]] {
+        let most = Int(longest * Double(sampleRate))
+        let window = max(1, sampleRate / 10)
+        var pieces: [[Int16]] = []
+        var start = 0
+        while samples.count - start > most {
+            let end = start + most
+            let earliest = max(start + window, end - Int(back * Double(sampleRate)))
+            // Of equally quiet moments, the latest, so pieces stay near the limit.
+            let quietest = stride(from: earliest, through: end - window, by: window / 2 + 1).reduce(earliest) { best, next in
+                loudness(samples[next..<next + window]) <= loudness(samples[best..<best + window]) ? next : best
+            }
+            let cut = quietest + window / 2
+            pieces.append(Array(samples[start..<cut]))
+            start = cut
+        }
+        pieces.append(Array(samples[start...]))
+        return pieces
+    }
+
+    private static func loudness(_ samples: ArraySlice<Int16>) -> Int {
+        samples.reduce(0) { $0 + abs(Int($1)) }
     }
 }
 
@@ -247,13 +283,6 @@ public enum Transcription {
 
 /// The transcript turned into what she meant to type, or her selection rewritten as she asked.
 public enum Rewrite {
-    /// Only the double-tap flow supplies this instruction; voice dictation keeps its own prompts.
-    public static let improveInstruction = """
-        Just improve basic formatting, grammar, and clarity. Preserve the original meaning, language, and tone; don't add information or answer the text.
-        Assume the text will be sent on WhatsApp. Use WhatsApp formatting when useful: *bold*, _italic_, ~strikethrough~, and ```monospace```.
-        Never use ** for bold, Markdown headings, or Markdown links. Don't add emphasis or other formatting unnecessarily.
-        """
-
     public static let writeInstructions = """
         You turn dictated speech into the text the speaker meant to type. The dictation is inside <text>.
         Fix punctuation, capitalization and paragraphs. Write numbers, dates and times the way people type them. Use a list only when one was dictated.

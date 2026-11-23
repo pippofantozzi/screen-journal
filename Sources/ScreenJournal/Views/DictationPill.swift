@@ -4,9 +4,10 @@ import SwiftUI
 /// A dark capsule at the bottom of the screen. Connecting: dim dots, lit one after another, until the microphone
 /// sends sound. Listening: bars (after a pencil when editing) mirrored from the center, the newest sound in the middle,
 /// with a glow that swells with her voice.
-/// Writing: a slow wave through the same bars. Something off: one line.
+/// Paused: the bars held still and dim. While recording, pause (or resume) on the left and delete on the right. Writing: a slow wave through the same bars. Something off: one line.
 struct DictationPill: View {
     let controller: DictationController
+    @Environment(\.language) private var language
 
     static let barWidth: CGFloat = 3
     static let tallest: CGFloat = 24
@@ -16,12 +17,19 @@ struct DictationPill: View {
         HStack(spacing: 10) {
             switch controller.phase {
             case .listening:
+                button("pause.fill", language("Pause"), action: controller.togglePause)
                 if controller.isEditing { Image(systemName: "pencil").font(.callout.weight(.semibold)) }
                 if controller.isConnecting {
                     TimelineView(.animation) { context in connecting(at: context.date.timeIntervalSinceReferenceDate) }
                 } else {
                     bars(mirrored(controller.levels))
                 }
+                button("trash", language("Delete"), action: controller.cancel)
+            case .paused:
+                button("play.fill", language("Resume"), action: controller.togglePause)
+                if controller.isEditing { Image(systemName: "pencil").font(.callout.weight(.semibold)) }
+                bars(mirrored(controller.levels)).opacity(0.35)
+                button("trash", language("Delete"), action: controller.cancel)
             case .working:
                 TimelineView(.animation) { context in
                     bars(wave(at: context.date.timeIntervalSinceReferenceDate)).opacity(0.75)
@@ -41,6 +49,14 @@ struct DictationPill: View {
         .fixedSize()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.spring(response: 0.18, dampingFraction: 0.7), value: controller.levels)
+    }
+
+    private func button(_ symbol: String, _ name: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.callout.weight(.semibold)).frame(width: 22, height: 22).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name)
     }
 
     /// Only while listening, and only as loud as the last moment.
@@ -95,16 +111,18 @@ struct DictationPill: View {
     }
 }
 
-/// Floats over every app without taking focus or clicks, so the text lands where her cursor was.
+/// Floats over every app without taking focus, so the text lands where her cursor was. Takes clicks only while recording, for its buttons.
 @MainActor
 final class DictationPillPanel {
     /// Room around the capsule for its glow.
     private static let size = CGSize(width: 300, height: 80)
     private let panel: NSPanel
+    private let controller: DictationController
 
     init(controller: DictationController) {
         panel = NSPanel(contentRect: CGRect(origin: .zero, size: Self.size), styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: true)
+        self.controller = controller
         // Above full-screen browsers and video players, which can raise their own windows past the status bar.
         panel.level = .screenSaver
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
@@ -114,7 +132,7 @@ final class DictationPillPanel {
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: DictationPill(controller: controller))
+        panel.contentView = FirstClickHostingView(rootView: Localized { DictationPill(controller: controller) })
     }
 
     /// On the screen she's working on, just above the Dock.
@@ -123,10 +141,16 @@ final class DictationPillPanel {
         if let frame = screen?.visibleFrame {
             panel.setFrameOrigin(CGPoint(x: frame.midX - Self.size.width / 2, y: frame.minY + 8))
         }
+        panel.ignoresMouseEvents = !controller.isRecording
         panel.orderFrontRegardless()
     }
 
     func hide() {
         panel.orderOut(nil)
     }
+}
+
+/// A click on a button in the pill acts at once, though the pill's panel never becomes key.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

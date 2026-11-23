@@ -22,6 +22,8 @@ final class Microphone: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
     /// When the first sound arrived. Until then a Bluetooth headset is still switching into call mode
     /// and sends pure zeros.
     private var liveAt: Date?
+    /// Sound arriving while paused is dropped; the microphone stays open so resuming is instant.
+    private var paused = false
     private var onLevel: @Sendable (Float) -> Void = { _ in }
 
     static var isAllowed: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
@@ -62,6 +64,7 @@ final class Microphone: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
             samples = []
             buffers = 0
             liveAt = nil
+            paused = false
             startedAt = Date()
             self.onLevel = onLevel
         }
@@ -95,6 +98,12 @@ final class Microphone: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
         return (WAV.encode(samples: recorded, sampleRate: Self.sampleRate), seconds, Silence.isSilent(recorded))
     }
 
+    func pause() { lock.withLock { paused = true } }
+    func resume() { lock.withLock { paused = false } }
+
+    /// How much has been recorded so far, not counting pauses.
+    var seconds: TimeInterval { lock.withLock { Double(samples.count) / Double(Self.sampleRate) } }
+
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
         let length = CMBlockBufferGetDataLength(block)
@@ -104,6 +113,7 @@ final class Microphone: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
         let sounds = chunk.contains { $0 != 0 }
         let (count, onLevel, live) = lock.withLock {
             buffers += 1
+            guard !paused else { return (buffers, self.onLevel, false) }
             samples.append(contentsOf: chunk)
             if sounds, liveAt == nil { liveAt = Date() }
             return (buffers, self.onLevel, liveAt != nil)

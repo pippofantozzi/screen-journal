@@ -40,6 +40,6 @@ struct SpeechGateway: Sendable {
         do {
             body = try Rewrite.request(model: Self.writeModel, intent: intent, transcript: transcript, words: words, zeroRetention: Self.zeroRetention)
         } catch { return .failure(LabelError(message: error.localizedDescription)) }
-        return await GatewayHTTP.post(Self.chatURL, key: key, body: body, timeout: 30).flatMap(Rewrite.text)
+        return await GatewayHTTP.post(Self.chatURL, key: key, body: body, timeout: 90).flatMap(Rewrite.text)
     }
 }

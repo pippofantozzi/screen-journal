@@ -47,6 +47,9 @@ struct MenuContent: View {
         // In WhatsApp, a tap of Left ⌘ opens it too; a menu can't show a lone modifier.
         Button(language("Export WhatsApp Chat…")) { windows.showWhatsAppExport() }
         Button(language("Your Week…")) { windows.showWeek() }
+        if windows.dictation.hasUnsent {
+            Button(language("Retry Last Dictation")) { windows.dictation.retry() }
+        }
         // One place for everything else, so there's never a second place to look.
         Button(language("Settings…")) { windows.showSettings() }
             .keyboardShortcut(",")

@@ -55,7 +55,7 @@ struct ModifierTapTests {
 }
 
 struct ModifierGestureTests {
-    @Test func oneTapStartsDictationWhenTheDoubleTapWindowCloses() {
+    @Test func oneTapCountsWhenTheDoubleTapWindowCloses() {
         var gesture = ModifierGesture()
         _ = gesture.feed(.down, at: 10)
         #expect(gesture.feed(.up, at: 10.1) == .wait)
@@ -63,7 +63,7 @@ struct ModifierGestureTests {
         #expect(gesture.flush() == .none)
     }
 
-    @Test func twoQuickTapsImproveInsteadOfStartingDictation() {
+    @Test func twoQuickTapsAreADoubleTapNotASingle() {
         var gesture = ModifierGesture()
         #expect(gesture.feed(.down, at: 10) == .none)
         #expect(gesture.feed(.up, at: 10.1) == .wait)
@@ -83,7 +83,7 @@ struct ModifierGestureTests {
         #expect(gesture.flush() == .single)
     }
 
-    @Test func slowTapsAndHoldsDoNotImproveText() {
+    @Test func slowTapsAndHoldsAreNeverADoubleTap() {
         var gesture = ModifierGesture()
         _ = gesture.feed(.down, at: 10)
         _ = gesture.feed(.up, at: 10.1)
@@ -106,7 +106,7 @@ struct ModifierGestureTests {
         #expect(gesture.flush() == .single)
     }
 
-    @Test func threeTapsProduceOneImprovementThenOneDictation() {
+    @Test func threeTapsAreOneDoubleThenOneSingle() {
         var gesture = ModifierGesture()
         _ = gesture.feed(.down, at: 10)
         _ = gesture.feed(.up, at: 10.05)
@@ -119,6 +119,11 @@ struct ModifierGestureTests {
 }
 
 struct WAVTests {
+    @Test func samplesReadBackAsEncoded() {
+        let samples: [Int16] = [0, 1, -1, .max, .min, 12_345]
+        #expect(WAV.samples(of: WAV.encode(samples: samples, sampleRate: 16_000)) == samples)
+    }
+
     @Test func theHeaderDescribes16BitMonoPCM() {
         let wav = WAV.encode(samples: [1, -1], sampleRate: 16_000)
         #expect(wav.count == 48)
@@ -189,20 +194,6 @@ struct SilenceTests {
 }
 
 struct RewriteTests {
-    @Test func quickImprovementUsesWhatsAppFormattingOnlyInThatFlow() throws {
-        let body = try json(Rewrite.request(model: "m", intent: .edit(selection: "ola   tudo bem"), transcript: Rewrite.improveInstruction, words: [], zeroRetention: true))
-        let sent = try #require(body["messages"] as? [[String: String]])
-        let content = try #require(sent[1]["content"])
-        #expect(content.contains("<selected>\nola   tudo bem\n</selected>"))
-        #expect(content.contains("formatting, grammar, and clarity"))
-        #expect(content.contains("WhatsApp"))
-        #expect(content.contains("*bold*"))
-        #expect(content.contains("_italic_"))
-        #expect(content.contains("Never use **"))
-        #expect(!Rewrite.editInstructions.contains("WhatsApp"))
-        #expect(!Rewrite.writeInstructions.contains("WhatsApp"))
-    }
-
     private func messages(_ intent: DictationIntent, words: [String] = []) throws -> [[String: String]] {
         let body = try json(Rewrite.request(model: "m", intent: intent, transcript: "say this", words: words, zeroRetention: true))
         return try #require(body["messages"] as? [[String: String]])
@@ -271,5 +262,30 @@ struct LoudnessTests {
     @Test func louderIsAlwaysHigher() {
         let levels = [100, 300, 1_000, 3_000].map { Loudness.level(tone(Int16($0))) }
         #expect(levels == levels.sorted() && Set(levels).count == levels.count)
+    }
+}
+
+struct RecordingPiecesTests {
+    private let rate = 100
+    private func loud(_ seconds: Int) -> [Int16] { (0..<seconds * rate).map { $0 % 2 == 0 ? 8_000 : -8_000 } }
+    private func quiet(_ seconds: Int) -> [Int16] { Array(repeating: 0, count: seconds * rate) }
+
+    @Test func aShortRecordingStaysWhole() {
+        let samples = loud(5)
+        #expect(RecordingPieces.split(samples, sampleRate: rate, longest: 10) == [samples])
+    }
+
+    @Test func aLongRecordingIsCutIntoPiecesNoLongerThanTheLimitThatAddUpToIt() {
+        let samples = loud(95)
+        let pieces = RecordingPieces.split(samples, sampleRate: rate, longest: 30)
+        #expect(pieces.count == 4)
+        #expect(pieces.allSatisfy { $0.count <= 30 * rate })
+        #expect(Array(pieces.joined()) == samples)
+    }
+
+    @Test func theCutFallsInThePauseBeforeTheLimit() {
+        let samples = loud(24) + quiet(1) + loud(20)
+        let first = RecordingPieces.split(samples, sampleRate: rate, longest: 30)[0]
+        #expect((24 * rate...25 * rate).contains(first.count))
     }
 }

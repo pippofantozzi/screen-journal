@@ -4,21 +4,25 @@ import Observation
 import os
 
 /// Tap the dictation key, speak, tap again: what she said is typed where her cursor is, tidied.
-/// With text highlighted when she starts, what she says is how to rewrite it.
-/// Audio and text stay in memory and are gone once pasted; nothing reaches the journal.
+/// With text highlighted when she starts, what she says is how to rewrite it. Double-tap, or the pill's buttons, pause it; Esc drops it.
+/// A dictation's recording stays on disk until its text is pasted, so she can retry it after a failure; nothing reaches the journal.
 @MainActor
 @Observable
 final class DictationController {
     enum Phase: Equatable {
         case idle
         case listening
+        /// Listening held: nothing is recorded until she taps the key again.
+        case paused
         case working
         /// One line for a moment, then gone.
         case notice(String)
     }
 
     /// Longer recordings stop on their own, so a forgotten tap doesn't record all afternoon.
-    static let longest: TimeInterval = 5 * 60
+    static let longest: TimeInterval = 15 * 60
+    /// Longer recordings go to the transcriber as pieces this long, all at once, so none is too big to send.
+    static let piece: TimeInterval = 3 * 60
     /// Shorter is a slip of the finger: nothing is sent.
     static let shortest: TimeInterval = 0.4
     private static let log = Logger(subsystem: "com.filippofantozzi.ScreenJournal", category: "dictation")
@@ -30,6 +34,8 @@ final class DictationController {
     private(set) var isConnecting = false
     /// The last loudness readings, oldest first, for the pill's bars.
     private(set) var levels: [Float] = Array(repeating: 0, count: 9)
+    /// A recording failed to become text and can be tried again.
+    private(set) var hasUnsent = !UnsentRecordings.all().isEmpty
 
     @ObservationIgnored private var watcher: KeyWatcher?
     @ObservationIgnored private var waitForTrust: Task<Void, Never>?
@@ -37,7 +43,6 @@ final class DictationController {
     @ObservationIgnored private var selection: Task<String?, Never>?
     @ObservationIgnored private var limit: Task<Void, Never>?
     @ObservationIgnored private var clearNotice: Task<Void, Never>?
-    @ObservationIgnored private var improvement: Task<Void, Never>?
     @ObservationIgnored private var listeningSince = Date.distantPast
     @ObservationIgnored private lazy var pill = DictationPillPanel(controller: self)
 
@@ -54,59 +59,48 @@ final class DictationController {
             return
         }
         watcher = KeyWatcher(key: key, onTap: { [weak self] in self?.toggle() },
-                             onDoubleTap: { [weak self] in self?.improve() },
+                             onDoubleTap: { [weak self] in self?.togglePause() },
                              onEscape: { [weak self] in self?.cancel() })
-    }
-
-    /// Double-tap: improve the selection directly, without recording or asking for microphone access.
-    private func improve() {
-        switch phase {
-        case .listening: Task { await finish() }; return
-        case .working: return
-        case .idle, .notice: break
-        }
-        guard let gateway = SpeechGateway.configured() else { return notice(language("Connect AI in Settings → General.")) }
-        clearNotice?.cancel()
-        phase = .working
-        isEditing = true
-        pill.show()
-        let target = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        improvement = Task { [weak self] in
-            guard let self else { return }
-            defer { if !Task.isCancelled { self.improvement = nil } }
-            let intent = DictationIntent(selection: await Selection.read())
-            guard !Task.isCancelled else { return }
-            guard case .edit(let original) = intent else { return self.notice(self.language("Highlight text to improve it.")) }
-            Sounds.play(.working)
-            let result = await gateway.rewrite(intent, transcript: Rewrite.improveInstruction, words: Preferences.currentDictationWords)
-            guard !Task.isCancelled else { return }
-            switch result {
-            case .success(let text) where !text.isEmpty:
-                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target else {
-                    return self.notice(self.language("Text changed. Highlight it and try again."))
-                }
-                let selected = await Selection.read()
-                guard !Task.isCancelled else { return }
-                guard selected == original, NSWorkspace.shared.frontmostApplication?.processIdentifier == target else {
-                    return self.notice(self.language("Text changed. Highlight it and try again."))
-                }
-                Paster.paste(text)
-                Sounds.play(.done)
-                self.hide()
-            case .success:
-                self.notice(self.language("Couldn't improve the text. Try again."))
-            case .failure(let error):
-                Self.log.error("text improvement failed: \(error.message, privacy: .public)")
-                self.notice(self.language("Couldn't improve the text. Try again."))
-            }
-        }
     }
 
     private func toggle() {
         switch phase {
         case .idle, .notice: Task { await start() }
         case .listening: Task { await finish() }
+        case .paused: resume()
         case .working: break
+        }
+    }
+
+    var isRecording: Bool { phase == .listening || phase == .paused }
+
+    func togglePause() {
+        switch phase {
+        case .listening: pause()
+        case .paused: resume()
+        case .idle, .working, .notice: break
+        }
+    }
+
+    private func pause() {
+        limit?.cancel()
+        microphone.pause()
+        phase = .paused
+    }
+
+    private func resume() {
+        microphone.resume()
+        phase = .listening
+        stop(after: Self.longest - microphone.seconds)
+        Sounds.play(.start)
+    }
+
+    /// Paused time doesn't count toward the limit.
+    private func stop(after seconds: TimeInterval) {
+        limit?.cancel()
+        limit = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            if !Task.isCancelled { await self?.finish() }
         }
     }
 
@@ -129,15 +123,12 @@ final class DictationController {
         Sounds.play(.start)
         let selection = Task { await Selection.read() }
         self.selection = selection
-        limit = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.longest))
-            if !Task.isCancelled { await self?.finish() }
-        }
+        stop(after: Self.longest)
         isEditing = DictationIntent(selection: await selection.value) != .write
     }
 
     private func finish() async {
-        guard phase == .listening else { return }
+        guard isRecording else { return }
         phase = .working
         limit?.cancel()
         let (wav, seconds, silent) = microphone.stop()
@@ -145,18 +136,43 @@ final class DictationController {
         // A short tap is a slip; a long one that recorded nothing means no sound arrived, which she should hear about.
         guard Date().timeIntervalSince(listeningSince) >= Self.shortest else { return hide() }
         guard !silent, seconds >= Self.shortest else { return notice(language("Didn't hear anything. Check the microphone in Settings → Dictation.")) }
+        // An instruction for an edit is quick to say again; a dictation may be minutes of speech.
+        let saved = intent == .write ? UnsentRecordings.keep(wav) : nil
+        hasUnsent = !UnsentRecordings.all().isEmpty
         guard let gateway = SpeechGateway.configured() else { return notice(language("Connect AI in Settings → General.")) }
+        await deliver(wav, intent: intent, saved: saved, through: gateway)
+    }
+
+    /// The newest unsent recording, typed where her cursor is now, as a dictation.
+    func retry() {
+        switch phase {
+        case .listening, .paused, .working: return
+        case .idle, .notice: break
+        }
+        guard let saved = UnsentRecordings.all().first, let wav = try? Data(contentsOf: saved) else { return }
+        guard let gateway = SpeechGateway.configured() else { return notice(language("Connect AI in Settings → General.")) }
+        clearNotice?.cancel()
+        isEditing = false
+        phase = .working
+        pill.show()
+        Task { await deliver(wav, intent: .write, saved: saved, through: gateway) }
+    }
+
+    /// Transcribed, rewritten and pasted; the saved recording goes once its text is pasted, or when it held no speech.
+    private func deliver(_ wav: Data, intent: DictationIntent, saved: URL?, through gateway: SpeechGateway) async {
         Sounds.play(.working)
         let words = Preferences.currentDictationWords
         let transcript: String
-        switch await gateway.transcribe(wav, words: words, language: Preferences.currentDictationLanguage) {
+        switch await transcribe(wav, words: words, through: gateway) {
         case .success(let text) where !text.isEmpty: transcript = text
         case .success:
             Self.log.notice("transcript empty")
+            discard(saved)
             return notice(language("Didn't catch that."))
         case .failure(let error):
             Self.log.error("transcription failed: \(error.message, privacy: .public)")
-            return notice(reason(error))
+            guard saved != nil else { return notice(reason(error)) }
+            return notice(reason(error) + " " + language("Retry from the menu bar."), for: 6)
         }
         let text: String
         switch await gateway.rewrite(intent, transcript: transcript, words: words) {
@@ -169,20 +185,41 @@ final class DictationController {
             return notice(reason(error))
         }
         Paster.paste(text)
+        discard(saved)
         Sounds.play(.done)
         Self.log.info("pasted")
         hide()
     }
 
-    /// Esc drops a recording or cancels a pending text improvement before anything is pasted.
-    func cancel() {
-        if let improvement {
-            improvement.cancel()
-            self.improvement = nil
-            hide()
-            return
+    /// Each piece's text, in order; one piece failing fails the whole, so the saved recording stays for a retry.
+    private func transcribe(_ wav: Data, words: [String], through gateway: SpeechGateway) async -> Result<String, LabelError> {
+        let pieces = RecordingPieces.split(WAV.samples(of: wav), sampleRate: Microphone.sampleRate, longest: Self.piece)
+        let spoken = Preferences.currentDictationLanguage
+        let results = await withTaskGroup(of: (Int, Result<String, LabelError>).self) { group in
+            for (index, piece) in pieces.enumerated() {
+                let audio = WAV.encode(samples: piece, sampleRate: Microphone.sampleRate)
+                group.addTask { (index, await gateway.transcribe(audio, words: words, language: spoken)) }
+            }
+            return await group.reduce(into: []) { $0.append($1) }
         }
-        guard phase == .listening else { return }
+        var texts = Array(repeating: "", count: pieces.count)
+        for (index, result) in results {
+            switch result {
+            case .success(let text): texts[index] = text
+            case .failure(let error): return .failure(error)
+            }
+        }
+        return .success(texts.filter { !$0.isEmpty }.joined(separator: " "))
+    }
+
+    private func discard(_ saved: URL?) {
+        if let saved { UnsentRecordings.discard(saved) }
+        hasUnsent = !UnsentRecordings.all().isEmpty
+    }
+
+    /// Drops the recording, paused or not; nothing is sent or kept.
+    func cancel() {
+        guard isRecording else { return }
         limit?.cancel()
         selection?.cancel()
         _ = microphone.stop()
@@ -197,12 +234,12 @@ final class DictationController {
         levels = Array(levels.dropFirst()) + [level >= last ? level : last * 0.55 + level * 0.45]
     }
 
-    private func notice(_ message: String) {
+    private func notice(_ message: String, for seconds: Double = 2.5) {
         phase = .notice(message)
         pill.show()
         clearNotice?.cancel()
         clearNotice = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2.5))
+            try? await Task.sleep(for: .seconds(seconds))
             if !Task.isCancelled { self?.hide() }
         }
     }
@@ -217,7 +254,7 @@ final class DictationController {
 
     private func reason(_ error: LabelError) -> String {
         if error.message.hasPrefix("401") || error.message.hasPrefix("403") { return language("The gateway refused the AI key.") }
-        if error.message == "No reply." { return language("No internet connection.") }
+        if error.message.hasPrefix("No reply.") { return language("No internet connection.") }
         return language("Couldn't transcribe. Try again.")
     }
 }

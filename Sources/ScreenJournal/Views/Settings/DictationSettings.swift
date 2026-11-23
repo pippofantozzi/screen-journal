@@ -24,7 +24,8 @@ struct DictationSettings: View {
                     needs
                     LabeledContent(language("Write")) { steps(.key, .action(language("speak")), .key) }
                     LabeledContent(language("Edit")) { steps(.action(language("highlight")), .key, .action(language("say how")), .key) }
-                    LabeledContent(language("Improve")) { steps(.action(language("highlight")), .action(language("double-tap Right %@", key.symbol))) }
+                    LabeledContent(language("Pause")) { steps(.action(language("speak")), .action(language("double-tap Right %@", key.symbol))) }
+                    LabeledContent(language("Cancel")) { steps(.action(language("speak")), .cap("esc")) }
                 }
             }
 
@@ -82,6 +83,7 @@ struct DictationSettings: View {
 
     private enum Step: Hashable {
         case key
+        case cap(String)
         case action(String)
     }
 
@@ -91,17 +93,21 @@ struct DictationSettings: View {
             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                 if index > 0 { Image(systemName: "arrow.right").font(.caption).foregroundStyle(.tertiary) }
                 switch step {
-                case .key:
-                    Text(language("Right %@", key.symbol))
-                        .font(.callout.weight(.medium))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.5)))
+                case .key: cap(language("Right %@", key.symbol))
+                case .cap(let name): cap(name)
                 case .action(let words):
                     Text(words).foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    private func cap(_ name: String) -> some View {
+        Text(name)
+                        .font(.callout.weight(.medium))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.5)))
     }
 
     private func chip(_ word: String) -> some View {

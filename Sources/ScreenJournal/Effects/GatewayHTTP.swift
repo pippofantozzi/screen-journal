@@ -13,9 +13,13 @@ enum GatewayHTTP {
         var last = LabelError(message: "No reply.")
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(for: .seconds(1 << attempt)) }
-            guard let (data, response) = try? await URLSession.shared.data(for: request),
-                  let status = (response as? HTTPURLResponse)?.statusCode
-            else { continue }
+            let data: Data, response: URLResponse
+            do { (data, response) = try await URLSession.shared.data(for: request) } catch {
+                // Kept after "No reply." so the log tells a timeout from a lost connection.
+                last = LabelError(message: "No reply. \(error.localizedDescription)")
+                continue
+            }
+            guard let status = (response as? HTTPURLResponse)?.statusCode else { continue }
             if status == 200 { return .success(data) }
             last = LabelError(message: "\(status) \(String(decoding: data.prefix(200), as: UTF8.self))")
             if status < 500 && status != 429 { break }
