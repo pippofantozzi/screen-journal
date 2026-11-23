@@ -18,12 +18,18 @@ export VERSION
 export FEED_URL="https://$OWNER.github.io/${REPO#*/}/appcast.xml"
 export ED_PUBLIC_KEY="$("$SPARKLE_BIN/generate_keys" -p)"
 
-git tag "v$VERSION"
+# Updates install silently, so a release must pass the tests before it can reach her.
+swift test
 scripts/bundle.sh
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent build/ScreenJournal.app "$ZIP"
 
 SIGNATURE="$("$SPARKLE_BIN/sign_update" "$ZIP")"   # sparkle:edSignature="…" length="…"
+# The installed app rejects any zip its embedded public key can't verify; catch that here, not on her Mac.
+ED_SIGNATURE="$(sed -E 's/.*edSignature="([^"]+)".*/\1/' <<<"$SIGNATURE")"
+"$SPARKLE_BIN/sign_update" --verify "$ZIP" "$ED_SIGNATURE"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' build/ScreenJournal.app/Contents/Info.plist)" = "$ED_PUBLIC_KEY" ] \
+  || { echo "Bundle's public key doesn't match the signing key."; exit 1; }
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/ScreenJournal.app/Contents/Info.plist)"
 ITEM="    <item>
       <title>$VERSION</title>
@@ -38,6 +44,7 @@ ITEM="    <item>
 # Newest item goes first, right after the marker line.
 ITEM="$ITEM" perl -0pi -e 's/(<!-- items -->\n)/$1$ENV{ITEM}\n/' docs/appcast.xml
 
+git tag "v$VERSION"
 # The tag goes up first, or `gh release create` tags whatever the remote's main is.
 git push origin HEAD "v$VERSION"
 gh release create "v$VERSION" "$ZIP" --repo "$REPO" --title "Screen Journal $VERSION" --notes "$NOTES"
