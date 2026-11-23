@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.10.0</title>
+      <description><![CDATA[Dictations are no longer lost: if transcription fails, use Retry Last Dictation in the menu bar. Record up to 15 minutes. While recording, double-tap Right Command or use the pill's buttons to pause, and the trash (or Esc) to delete. The double-tap improve shortcut is removed.]]></description>
+      <pubDate>Mon, 23 Nov 2026 13:37:44 -0300</pubDate>
+      <sparkle:version>40</sparkle:version>
+      <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.10.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="iK0T7rtNTNMSAv4KHa6vzogKtWNCKfG8rd3bhIOmE8OE/2E/9j/QkN0lN2cK7i+janAqFIPxSmxaDw/136wsCg==" length="4214829"/>
+    </item>
+    <item>
       <title>0.9.0</title>
       <description><![CDATA[Highlight text and quickly double-tap Right Command to improve formatting, grammar, and clarity without speaking. This shortcut uses WhatsApp formatting (*bold*, _italic_) and preserves the original language and tone.]]></description>
       <pubDate>Thu, 05 Nov 2026 16:35:24 -0300</pubDate>
