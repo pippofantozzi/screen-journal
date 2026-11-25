@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.11.0</title>
+      <description><![CDATA[Sessions are now labelled by a newer, more accurate model, with or without the screenshot. Also improves privacy, dictation, Your Week, WhatsApp export and background performance.]]></description>
+      <pubDate>Wed, 25 Nov 2026 16:14:55 -0300</pubDate>
+      <sparkle:version>44</sparkle:version>
+      <sparkle:shortVersionString>0.11.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.11.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="JH0Ea6mYKT/NDBD5VypwOp3U/P82AJYe5Mp9oQgX8GHGXUtKTpybt/P2DPCX1teO1DR1+ne2QqWaixmPIuOxCw==" length="4470966"/>
+    </item>
+    <item>
       <title>0.10.0</title>
       <description><![CDATA[Dictations are no longer lost: if transcription fails, use Retry Last Dictation in the menu bar. Record up to 15 minutes. While recording, double-tap Right Command or use the pill's buttons to pause, and the trash (or Esc) to delete. The double-tap improve shortcut is removed.]]></description>
       <pubDate>Mon, 23 Nov 2026 13:37:44 -0300</pubDate>
