@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay eval cases through the vision model with a prompt variant, and score it against the ideal answers.
+"""Replay eval cases through a decision model with a prompt variant, and score it against the ideal answers.
 
 Cases come from `ScreenJournal cases --out DIR --apply`: one folder per session with request.json (as sent,
 image removed), reply.json and screen.jpg. Ideals are graded JSONL lines ({"id", "ideal": {work, automatable, task},
@@ -7,11 +7,11 @@ image removed), reply.json and screen.jpg. Ideals are graded JSONL lines ({"id",
 
     {"name": "with-about",
      "about": "I build AI products…",                 # replaces state.about_the_person
-     "model": "typesafe-ai/jev-1.14.0",
+     "model": "baseten/groundhog-1", 
      "questions": {"work": {"instructions": "…"}},    # any field of any question
-     "image": false}                                   # text only, as the text model is asked
+     "image": false}                                   # text only, as sessions with something redacted are asked
 
-    scripts/jev-eval.py --cases ~/ScreenJournal/evals/jev-1.14.0 \
+    scripts/decision-eval.py --cases ~/ScreenJournal/evals/jev-1.14.0 \
         --ideals ~/ScreenJournal/evals/jev-1.14.0-review/graded-*.jsonl \
         --variant variant.json [--baseline] [--min-confidence medium] [--out results.jsonl]
 

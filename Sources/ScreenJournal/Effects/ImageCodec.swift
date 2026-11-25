@@ -29,7 +29,7 @@ enum ImageCodec {
         guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
     }
 
-    /// A screenshot as JPEG for the vision model, long side capped below its 1568-pixel limit.
+    /// A screenshot as JPEG for the decision model, long side capped.
     static func jpeg(at url: URL, maxPixelSize: Int = 1024, quality: Double = 0.7) -> Data? {
         guard let image = preview(at: url, maxPixelSize: maxPixelSize) else { return nil }
         let data = NSMutableData()

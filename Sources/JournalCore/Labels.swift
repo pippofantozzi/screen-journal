@@ -300,7 +300,6 @@ public enum SystemOne {
 
     /// `providerOptions` asks the gateway to route only to providers that don't train on prompts,
     /// and with `zeroRetention` only to ones that keep nothing (a Vercel Pro feature).
-    /// `screenshot` is a JPEG whose long side is at most 1568 pixels, the most the vision model accepts.
     public static func request(model: String, state: SessionState, kinds: [TaskKind], zeroRetention: Bool, screenshot: Data? = nil) throws -> Data {
         var gateway = ["disallowPromptTraining": true]
         if zeroRetention { gateway["zeroDataRetention"] = true }

@@ -46,7 +46,7 @@ public enum JournalCommand: Equatable, Sendable {
     case rebuild
     /// Asks the decision model about sessions not yet answered under the current `labels.json`; `day` nil means every day.
     case label(day: String?, titlesOnly: Bool, apply: Bool)
-    /// Asks the vision model about every session with a screenshot it may see, and keeps each request and reply
+    /// Asks the decision model about every session with a screenshot it may see, and keeps each request and reply
     /// in `out` as an eval case; writes no labels.
     case cases(day: String?, out: String, apply: Bool)
     /// Runs a recorded WAV through dictation as if just spoken, and prints the transcript and the text it would type.

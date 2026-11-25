@@ -5,10 +5,9 @@ import JournalCore
 /// The key is `GatewayKey.current()`; it is never stored in the journal.
 struct DecisionGateway: Sendable {
     static let url = URL(string: "https://ai-gateway.vercel.sh/typesafe/v1/systemone")!
-    /// 27B, answers a session's questions in under a second; `baseten/elephant-1` (9B) agreed on 93% of yes/no answers.
-    static let model = "baseten/mammoth-1"
-    /// Mammoth reads text only. Jev sees the screenshot too; pinned, since its image support is experimental and changes between versions.
-    static let lookModel = "typesafe-ai/jev-1.14.0"
+    /// Reads text and screenshots, about a second a session. On the graded eval set (`scripts/decision-eval.py`) it got
+    /// 84% of sessions right on all three answers with the screenshot and 74% from text alone; `baseten/bison-1` (31B, three times the price) got 82% and 78%.
+    static let model = "baseten/groundhog-1"
     /// Every request goes only to providers that keep nothing, and none that train on prompts.
     /// Needs the key's Vercel team on Pro: on Hobby the gateway refuses every request with 403.
     static let zeroRetention = true
@@ -28,7 +27,6 @@ struct DecisionGateway: Sendable {
         await answers(.probe, kinds: LabelSetup().kinds).map { _ in () }
     }
 
-    /// With a screenshot, the vision model answers.
     func answers(_ state: SessionState, kinds: [TaskKind], screenshot: Data? = nil) async -> Result<SystemOne.Answers, LabelError> {
         let body: Data
         do { body = try Self.body(state, kinds: kinds, screenshot: screenshot) } catch { return .failure(LabelError(message: error.localizedDescription)) }
@@ -36,7 +34,7 @@ struct DecisionGateway: Sendable {
     }
 
     static func body(_ state: SessionState, kinds: [TaskKind], screenshot: Data?) throws -> Data {
-        try SystemOne.request(model: screenshot == nil ? model : lookModel, state: state, kinds: kinds, zeroRetention: zeroRetention, screenshot: screenshot)
+        try SystemOne.request(model: model, state: state, kinds: kinds, zeroRetention: zeroRetention, screenshot: screenshot)
     }
 
     /// The raw reply to a request body.

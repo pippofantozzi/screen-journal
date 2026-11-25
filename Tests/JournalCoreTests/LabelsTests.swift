@@ -285,13 +285,13 @@ struct SessionStateTests {
 struct SystemOneTests {
     func body(zeroRetention: Bool = false) throws -> [String: Any] {
         let state = SessionState(session(at: 0), about: setup.about, frames: [])
-        let data = try SystemOne.request(model: "baseten/mammoth-1", state: state, kinds: setup.kinds, zeroRetention: zeroRetention)
+        let data = try SystemOne.request(model: "baseten/groundhog-1", state: state, kinds: setup.kinds, zeroRetention: zeroRetention)
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
     @Test func asksWorkAutomatableAndTaskWithHerContext() throws {
         let body = try body()
-        #expect(body["model"] as? String == "baseten/mammoth-1")
+        #expect(body["model"] as? String == "baseten/groundhog-1")
         #expect((body["state"] as? [String: Any])?["about_the_person"] as? String == setup.about)
         let questions = body["questions"] as? [String: [String: Any]]
         #expect(questions?["work"]?["type"] as? String == "noul")

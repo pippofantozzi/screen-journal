@@ -11,7 +11,7 @@ struct SessionSorter: Sendable {
         let day: String
         let session: Session
         let state: SessionState
-        /// Sent along, to the vision model, when she allows it and nothing on screen was redacted.
+        /// Sent along when she allows it and nothing on screen was redacted.
         let screenshot: URL?
     }
 

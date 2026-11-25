@@ -293,7 +293,7 @@ struct JournalCLI {
         let retention = DecisionGateway.zeroRetention ? "zero data retention, no prompt training" : "no prompt training"
         print("Sends, per session: \(sent), to \(DecisionGateway.model) through the Vercel AI Gateway (\(retention)).")
         if asks.contains(where: { $0.screenshot != nil }) {
-            print("Sessions with nothing redacted on screen go to \(DecisionGateway.lookModel) instead, with the screenshot (Settings → Journal).")
+            print("Sessions with nothing redacted on screen send the screenshot too (Settings → Journal).")
         }
         guard apply else {
             print("\nDry run: nothing sent. Add --apply to label them.\n")
@@ -345,7 +345,7 @@ struct JournalCLI {
         let days = day.map { [$0] } ?? store.dayNames().sorted()
         let asks: [Ask]
         do { asks = try days.flatMap { try lookAsks($0, setup: setup) } } catch { return failed(error) }
-        print("\(plural(asks.count, "session")) with a screenshot and nothing redacted, to \(DecisionGateway.lookModel); nothing is labelled.")
+        print("\(plural(asks.count, "session")) with a screenshot and nothing redacted, to \(DecisionGateway.model); nothing is labelled.")
         guard apply else {
             print("Dry run: nothing sent. Add --apply to ask and keep them in \(out.path).")
             return 0
