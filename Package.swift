@@ -12,15 +12,18 @@ let package = Package(
     ],
     targets: [
         .target(name: "JournalCore"),
+        .target(name: "PaneCore"),
         .executableTarget(
             name: "ScreenJournal",
             dependencies: [
                 "JournalCore",
+                "PaneCore",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "JournalCoreTests", dependencies: ["JournalCore"]),
+        .testTarget(name: "PaneCoreTests", dependencies: ["PaneCore"]),
     ]
 )

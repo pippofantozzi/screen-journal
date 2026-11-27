@@ -1,4 +1,5 @@
 import JournalCore
+import PaneCore
 import SwiftUI
 
 struct StatusIcon: View {
@@ -21,6 +22,7 @@ struct StatusIcon: View {
 struct MenuContent: View {
     let model: AppModel
     let windows: WindowPresenter
+    @AppStorage(Preferences.windowManagerEnabled) private var windowManagerEnabled = true
     @Environment(\.language) private var language
 
     var body: some View {
@@ -49,6 +51,10 @@ struct MenuContent: View {
         Button(language("Export WhatsApp Chat…")) { windows.showWhatsAppExport() }
         Button(language("Your Week…")) { windows.showWeek() }
 
+        if windowManagerEnabled {
+            windowsMenu
+        }
+
         if windows.dictation.hasUnsent {
             Divider()
             Button(windows.dictation.unsentCount > 1
@@ -76,6 +82,57 @@ struct MenuContent: View {
 
         Button(language("Quit Screen Journal")) { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    private var windowsMenu: some View {
+        let wm = windows.windowManager
+        return Menu(language("Windows")) {
+            Text(wm.profile.summary)
+            if !wm.isTrusted {
+                Button(language("Allow Accessibility…"), action: WindowContext.requestTrust)
+            }
+            Divider()
+            Button(wm.isDropAndSendActive
+                ? language("Restore from Drop & Send (⌃⌥W)")
+                : language("Drop & Send (⌃⌥W)")) {
+                Task { _ = await wm.perform(.send) }
+            }
+            Button(language("Dev Split (⌃⌥1)")) {
+                Task { _ = await wm.perform(.dev) }
+            }
+            Button(language("Swap Right Browser (⌃⌥B)")) {
+                Task { _ = await wm.perform(.swapBrowser) }
+            }
+            Button(language("Dual Browser Split (⌃⌥2)")) {
+                Task { _ = await wm.perform(.dualBrowser) }
+            }
+            Button(wm.isGrokDrawerActive
+                ? language("Hide Grok Bot Drawer (⌃⌥G)")
+                : language("Grok Bot Drawer (⌃⌥G)")) {
+                Task { _ = await wm.perform(.grok) }
+            }
+            Divider()
+            Button(language("Left Half (⌃⌥←)")) {
+                Task { _ = await wm.perform(.snapLeft) }
+            }
+            Button(language("Right Half (⌃⌥→)")) {
+                Task { _ = await wm.perform(.snapRight) }
+            }
+            Button(language("Maximize (⌃⌥↩)")) {
+                Task { _ = await wm.perform(.snapMax) }
+            }
+            Button(language("Left Third (⌃⌥[)")) {
+                Task { _ = await wm.perform(.snapLeftThird) }
+            }
+            Button(language("Right Two-Thirds (⌃⌥])")) {
+                Task { _ = await wm.perform(.snapRightTwoThirds) }
+            }
+            Divider()
+            Button(language("Undo Layout (⌃⌥U)")) {
+                Task { _ = await wm.perform(.undo) }
+            }
+            .disabled(wm.undoDepth == 0)
+        }
     }
 
     private func preview(_ text: String) -> String {

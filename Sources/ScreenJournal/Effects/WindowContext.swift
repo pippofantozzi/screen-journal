@@ -4,7 +4,23 @@ import JournalCore
 
 /// What the Accessibility API says about an app's focused window. Needs the Accessibility grant.
 enum WindowContext {
+    private static let moveLock = NSLock()
+    nonisolated(unsafe) private static var movingPIDs: Set<pid_t> = []
+
     static var isTrusted: Bool { AXIsProcessTrusted() }
+
+    /// Coordinates with `AXWindowEngine` so capture ticks never fight `AXEnhancedUserInterface` during a move/resize.
+    static func beginWindowMove(of pid: pid_t) {
+        moveLock.withLock { _ = movingPIDs.insert(pid) }
+    }
+
+    static func endWindowMove(of pid: pid_t) {
+        moveLock.withLock { _ = movingPIDs.remove(pid) }
+    }
+
+    static func isMovingWindow(of pid: pid_t) -> Bool {
+        moveLock.withLock { movingPIDs.contains(pid) }
+    }
 
     /// Adds the app to the Accessibility list (first call shows the system prompt), then opens the pane.
     static func requestTrust() {
@@ -24,7 +40,7 @@ enum WindowContext {
 
     /// The focused window's folder, file or page; nil without the grant or when the app says nothing.
     static func place(of pid: pid_t) -> String? {
-        guard isTrusted, let window = focusedWindow(of: pid) else { return nil }
+        guard isTrusted, !isMovingWindow(of: pid), let window = focusedWindow(of: pid) else { return nil }
         if let document = document(of: window) {
             return Place.from(document: document, pageURL: nil, addressBar: nil, home: NSHomeDirectory())
         }
@@ -52,9 +68,11 @@ enum WindowContext {
 
     private static func accessibleApp(_ pid: pid_t) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
-        // Chromium and Electron build their tree only for a client that asks; Firefox-based browsers wait for a screen reader.
-        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        if !isMovingWindow(of: pid) {
+            // Chromium and Electron build their tree only for a client that asks; Firefox-based browsers wait for a screen reader.
+            AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        }
         return app
     }
 

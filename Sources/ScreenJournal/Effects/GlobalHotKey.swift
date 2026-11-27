@@ -26,7 +26,9 @@ final class GlobalHotKey {
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &pressedID)
             let hotKey = Unmanaged<GlobalHotKey>.fromOpaque(context).takeUnretainedValue()
-            guard pressedID.id == hotKey.id else { return OSStatus(eventNotHandledErr) }
+            guard pressedID.signature == OSType(0x534A_4E54), pressedID.id == hotKey.id else {
+                return OSStatus(eventNotHandledErr)
+            }
             MainActor.assumeIsolated { hotKey.action() }
             return noErr
         }

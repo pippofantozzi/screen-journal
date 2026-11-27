@@ -21,6 +21,9 @@ struct JournalCLI {
         if case let .whatsapp(chat, last, out) = command {
             return whatsapp(chat: chat, last: last, out: out.map { URL(filePath: $0) } ?? WhatsAppArchive.downloads)
         }
+        if case let .pane(arguments) = command {
+            return PaneCLI.run(arguments: arguments)
+        }
         guard FileManager.default.fileExists(atPath: store.daysDir.path) else {
             print("No journal at \(store.root.path).")
             return 1
@@ -31,7 +34,7 @@ struct JournalCLI {
         case .rebuild: return withAppQuit { rebuild() }
         case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
         case let .cases(day, out, apply): return cases(day: day, out: URL(filePath: out), apply: apply)
-        case .dictate, .whatsapp: return 0
+        case .dictate, .whatsapp, .pane: return 0
         }
     }
 

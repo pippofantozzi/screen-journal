@@ -15,6 +15,13 @@ struct JournalCommandTests {
         return f.date(from: text)!
     }
 
+    @Test func routesPaneSubcommandArgumentsVerbatim() {
+        #expect(launch("pane", "send") == .command(.pane(["send"]), root: nil))
+        #expect(launch("pane", "snap", "left") == .command(.pane(["snap", "left"]), root: nil))
+        #expect(launch("pane", "status", "--json") == .command(.pane(["status", "--json"]), root: nil))
+        #expect(launch("pane", "--help") == .command(.pane(["--help"]), root: nil))
+    }
+
     @Test func exportsAWhatsAppChat() {
         #expect(launch("whatsapp") == .command(.whatsapp(chat: nil, last: 200, out: nil), root: nil))
         #expect(launch("whatsapp", "--chat", "Bru", "--last", "50", "--out", "/tmp")

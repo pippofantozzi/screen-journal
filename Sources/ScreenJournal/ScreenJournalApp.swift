@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.startNoteShortcut()
         windows.startWhatsAppTap()
         windows.startDictation()
+        windows.startWindowManager()
         if model.isOnboarded {
             model.start()
             if model.shouldAskForContext {
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        windows.stopWindowManager()
         model.stop()
     }
 
@@ -64,6 +66,7 @@ final class WindowPresenter {
     private var whatsappTap: KeyWatcher?
     private var waitForWhatsAppTrust: Task<Void, Never>?
     let dictation = DictationController()
+    let windowManager = WindowManagerController()
 
     init(model: AppModel) {
         self.model = model
@@ -93,7 +96,12 @@ final class WindowPresenter {
 
     func showSettings() {
         show("settings", title: language("Screen Journal Settings"), size: CGSize(width: 720, height: 640)) {
-            SettingsView(model: self.model, dictation: self.dictation, noteShortcutWorks: self.noteShortcutWorks) { [weak self] in self?.showGuide() }
+            SettingsView(
+                model: self.model,
+                dictation: self.dictation,
+                windowManager: self.windowManager,
+                noteShortcutWorks: self.noteShortcutWorks
+            ) { [weak self] in self?.showGuide() }
         }
     }
 
@@ -141,6 +149,14 @@ final class WindowPresenter {
         // Any Keychain prompt shows now, not in the middle of her first dictation.
         _ = GatewayKey.current()
         dictation.use(Preferences.currentDictationKey)
+    }
+
+    func startWindowManager() {
+        windowManager.start()
+    }
+
+    func stopWindowManager() {
+        windowManager.stop()
     }
 
     /// A floating panel that takes typing without activating the app: her app stays in front,

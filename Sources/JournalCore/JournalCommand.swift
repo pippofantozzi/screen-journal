@@ -11,6 +11,9 @@ public enum Launch: Equatable, Sendable {
 
     public static func parse(_ arguments: [String], timeZone: TimeZone) -> Launch {
         let words = withoutSystemFlags(Array(arguments.dropFirst()))
+        if words.first == "pane" {
+            return .command(.pane(Array(words.dropFirst())), root: nil)
+        }
         guard let name = words.first(where: JournalCommand.names.contains) else {
             if words.isEmpty { return .app }
             if words.contains(where: ["--help", "-h", "help"].contains) { return .help(JournalCommand.usage) }
@@ -55,12 +58,14 @@ public enum JournalCommand: Equatable, Sendable {
     /// Zips a WhatsApp chat's last `last` messages with their media into `out` (Downloads when nil);
     /// `chat` nil means the chat open in the WhatsApp Mac app.
     case whatsapp(chat: String?, last: Int, out: String?)
+    /// Invokes a built-in Pane window manager command on the running app.
+    case pane([String])
 
     public struct Usage: Error, Equatable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp", "pane"]
 
     static let usage = """
     Usage:
@@ -72,6 +77,7 @@ public enum JournalCommand: Equatable, Sendable {
       ScreenJournal cases --out <folder> [--day 2026-10-21] [--apply]
       ScreenJournal dictate --audio <file.wav> [--selection <text>] [--word <name> …] [--language portuguese|english|automatic]
       ScreenJournal whatsapp [--chat <name>] [--last 200] [--out <folder>]
+      ScreenJournal pane <send|dev|swap-browser|dual-browser|grok|undo|snap|summon|status>
     """
 
     fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {
