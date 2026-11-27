@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.12.0</title>
+      <description><![CDATA[Adds built-in window management (Ctrl+Option shortcuts for Drop & Send, Dev Split, Browser Swap, Grok Bot drawer, snaps, and undo), toggleable in Settings → Windows.]]></description>
+      <pubDate>Fri, 27 Nov 2026 17:11:53 -0300</pubDate>
+      <sparkle:version>46</sparkle:version>
+      <sparkle:shortVersionString>0.12.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.12.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="OfYre/pL9wTexUpovuWLg1lmurqvAllYdr2hqul6z/u6PBdU8bbF66xO6BAV9gDKOwkfSySWnwp1Hly2z66KAw==" length="4842738"/>
+    </item>
+    <item>
       <title>0.11.0</title>
       <description><![CDATA[Sessions are now labelled by a newer, more accurate model, with or without the screenshot. Also improves privacy, dictation, Your Week, WhatsApp export and background performance.]]></description>
       <pubDate>Wed, 25 Nov 2026 16:14:55 -0300</pubDate>
