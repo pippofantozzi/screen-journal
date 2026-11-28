@@ -15,11 +15,13 @@ struct JournalCommandTests {
         return f.date(from: text)!
     }
 
-    @Test func routesPaneSubcommandArgumentsVerbatim() {
-        #expect(launch("pane", "send") == .command(.pane(["send"]), root: nil))
-        #expect(launch("pane", "snap", "left") == .command(.pane(["snap", "left"]), root: nil))
-        #expect(launch("pane", "status", "--json") == .command(.pane(["status", "--json"]), root: nil))
-        #expect(launch("pane", "--help") == .command(.pane(["--help"]), root: nil))
+    @Test func polishesAMessageWithItsWords() {
+        #expect(launch("polish", "--text", "oi tudo bem", "--word", "Forgia")
+            == .command(.polish(text: "oi tudo bem", words: ["Forgia"]), root: nil))
+        guard case .invalid = launch("polish"), case .invalid = launch("polish", "--text", "  ") else {
+            Issue.record("polish needs a message")
+            return
+        }
     }
 
     @Test func routesAwakeSubcommandArgumentsVerbatim() {

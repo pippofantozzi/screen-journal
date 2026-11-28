@@ -11,9 +11,6 @@ public enum Launch: Equatable, Sendable {
 
     public static func parse(_ arguments: [String], timeZone: TimeZone) -> Launch {
         let words = withoutSystemFlags(Array(arguments.dropFirst()))
-        if words.first == "pane" {
-            return .command(.pane(Array(words.dropFirst())), root: nil)
-        }
         if words.first == "awake" {
             return .command(.awake(Array(words.dropFirst())), root: nil)
         }
@@ -61,8 +58,8 @@ public enum JournalCommand: Equatable, Sendable {
     /// Zips a WhatsApp chat's last `last` messages with their media into `out` (Downloads when nil);
     /// `chat` nil means the chat open in the WhatsApp Mac app.
     case whatsapp(chat: String?, last: Int, out: String?)
-    /// Invokes a built-in Pane window manager command on the running app.
-    case pane([String])
+    /// Prints `text` polished as a WhatsApp message, as the polish shortcut would paste it.
+    case polish(text: String, words: [String])
     /// Controls Keep Awake sessions on the running app or runs the recovery backstop.
     case awake([String])
 
@@ -70,7 +67,7 @@ public enum JournalCommand: Equatable, Sendable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp", "pane", "awake"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp", "polish", "awake"]
 
     static let usage = """
     Usage:
@@ -82,7 +79,7 @@ public enum JournalCommand: Equatable, Sendable {
       ScreenJournal cases --out <folder> [--day 2026-10-21] [--apply]
       ScreenJournal dictate --audio <file.wav> [--selection <text>] [--word <name> …] [--language portuguese|english|automatic]
       ScreenJournal whatsapp [--chat <name>] [--last 200] [--out <folder>]
-      ScreenJournal pane <send|dev|swap-browser|dual-browser|grok|undo|snap|summon|status>
+      ScreenJournal polish --text <message> [--word <name> …]
       ScreenJournal awake <start|extend|stop|status|backstop>
     """
 
@@ -94,6 +91,7 @@ public enum JournalCommand: Equatable, Sendable {
         case "cases": cases(&options)
         case "dictate": dictate(&options)
         case "whatsapp": whatsapp(&options)
+        case "polish": polish(&options)
         default: .success(.rebuild)
         }
     }
@@ -142,6 +140,14 @@ public enum JournalCommand: Equatable, Sendable {
             return fail("--language is portuguese, english or automatic.")
         }
         return .success(.dictate(audio: audio, selection: selection, words: words, language: language))
+    }
+
+    private static func polish(_ options: inout Options) -> Result<JournalCommand, Usage> {
+        let words = options.takeAll("--word")
+        guard let text = options.take("--text"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return fail("polish needs --text with the message.")
+        }
+        return .success(.polish(text: text, words: words))
     }
 
     private static func whatsapp(_ options: inout Options) -> Result<JournalCommand, Usage> {

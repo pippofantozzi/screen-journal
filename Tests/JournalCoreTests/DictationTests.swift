@@ -212,6 +212,14 @@ struct RewriteTests {
         #expect(sent[1]["content"]?.contains("say this") == true)
     }
 
+    @Test func polishingSendsOnlyTheSelectionUnderItsOwnInstructions() throws {
+        let body = try json(Rewrite.polishRequest(model: "m", selection: "oi tudo bem", words: ["Forgia"], zeroRetention: true))
+        let sent = try #require(body["messages"] as? [[String: String]])
+        #expect(sent[0]["content"]?.hasPrefix(Rewrite.polishInstructions) == true)
+        #expect(sent[0]["content"]?.contains("Forgia") == true)
+        #expect(sent[1]["content"] == "<selected>\noi tudo bem\n</selected>")
+    }
+
     @Test func theWordsAreGivenAsSpellings() throws {
         #expect(try messages(.write, words: ["Forgia", "Notion"])[0]["content"]?.contains("Forgia, Notion") == true)
         #expect(try messages(.write)[0]["content"] == Rewrite.writeInstructions)

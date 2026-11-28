@@ -1,7 +1,7 @@
 import JournalCore
 import SwiftUI
 
-/// The key that starts dictation, the microphone and language, the words it should know, and what it still needs to work.
+/// The key that starts dictation, the polish shortcut, the microphone and language, the words it should know, and what it still needs to work.
 struct DictationSettings: View {
     let dictation: DictationController
     @AppStorage(Preferences.dictationKey) private var key = DictationKey.rightCommand
@@ -28,6 +28,9 @@ struct DictationSettings: View {
                     LabeledContent(language("Edit")) { steps(.action(language("highlight")), .key, .action(language("say how")), .key) }
                     LabeledContent(language("Pause")) { steps(.action(language("speak")), .action(language("double-tap Right %@", key.symbol))) }
                     LabeledContent(language("Cancel")) { steps(.action(language("speak")), .cap("esc")) }
+                }
+                if dictation.polishShortcutWorks {
+                    LabeledContent(language("Polish for WhatsApp")) { steps(.action(language("highlight")), .cap(GlobalHotKey.polish.label)) }
                 }
             }
 

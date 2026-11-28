@@ -6,6 +6,8 @@ import Carbon.HIToolbox
 final class GlobalHotKey {
     /// ⌥Space: one easy chord, free in macOS; ChatGPT's desktop app claims it by default.
     static let note = (keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey), label: "⌥Space")
+    /// ⌃⌥P: free in macOS and WhatsApp, and types no accent the way a bare ⌥ chord does.
+    static let polish = (keyCode: UInt32(kVK_ANSI_P), modifiers: UInt32(controlKey | optionKey), label: "⌃⌥P")
     private static var lastID: UInt32 = 0
 
     private var hotKey: EventHotKeyRef?

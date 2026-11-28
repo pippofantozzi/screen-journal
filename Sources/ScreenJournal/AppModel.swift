@@ -18,7 +18,6 @@ enum Preferences {
     static let dictationLanguage = "dictationLanguage"
     static let dictationMicrophone = "dictationMicrophone"
     static let whatsappLast = "whatsappLast"
-    static let windowManagerEnabled = "windowManagerEnabled"
     static let awakeKeepDisplay = "awakeKeepDisplay"
     static let awakeLowPowerOnLidClose = "awakeLowPowerOnLidClose"
     static let awakeLowPowerFloor = "awakeLowPowerFloor"
@@ -28,10 +27,6 @@ enum Preferences {
     /// For AppKit, which reads it once when a window opens; SwiftUI views follow it live through `Localized`.
     static var currentLanguage: Language {
         UserDefaults.standard.string(forKey: language).flatMap(Language.init(rawValue:)) ?? .default
-    }
-
-    static var isWindowManagerEnabled: Bool {
-        UserDefaults.standard.object(forKey: windowManagerEnabled) as? Bool ?? true
     }
 
     static var currentAwakeConfig: AwakeConfig {
@@ -86,7 +81,6 @@ enum Preferences {
             pausedUntil: 0.0, onboarded: false, askedContext: false,
             language: Language.default.rawValue, dictationKey: DictationKey.rightCommand.rawValue, dictationWords: [String](),
             dictationLanguage: DictationLanguage.default.rawValue, dictationMicrophone: "",
-            windowManagerEnabled: true,
             awakeKeepDisplay: false, awakeLowPowerOnLidClose: true,
             awakeLowPowerFloor: 40, awakeEndFloor: 10, awakeThermalRules: true,
         ])
@@ -297,7 +291,6 @@ final class AppModel {
             "Status: \(status)",
             "Screen Recording: \(SystemAccess.hasScreenAccess ? "granted" : "missing")",
             "Accessibility: \(WindowContext.isTrusted ? "granted" : "missing")",
-            "Window manager: \(Preferences.isWindowManagerEnabled ? "enabled" : "disabled")",
             "Microphone: \(Microphone.isAllowed ? "granted" : "missing")",
             "AI Gateway key: \(GatewayKey.isSaved ? "saved" : "not set")",
             "Capture interval: \(Int(defaults.double(forKey: Preferences.interval)))s | Retention: \(defaults.integer(forKey: Preferences.retentionDays))d | Auto-tidy: \(defaults.bool(forKey: Preferences.autoTidy))",

@@ -21,8 +21,8 @@ struct JournalCLI {
         if case let .whatsapp(chat, last, out) = command {
             return whatsapp(chat: chat, last: last, out: out.map { URL(filePath: $0) } ?? WhatsAppArchive.downloads)
         }
-        if case let .pane(arguments) = command {
-            return PaneCLI.run(arguments: arguments)
+        if case let .polish(text, words) = command {
+            return polish(text, words: words)
         }
         if case let .awake(arguments) = command {
             return AwakeCLI.run(arguments: arguments)
@@ -37,7 +37,7 @@ struct JournalCLI {
         case .rebuild: return withAppQuit { rebuild() }
         case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
         case let .cases(day, out, apply): return cases(day: day, out: URL(filePath: out), apply: apply)
-        case .dictate, .whatsapp, .pane, .awake: return 0
+        case .dictate, .whatsapp, .polish, .awake: return 0
         }
     }
 
@@ -457,6 +457,22 @@ struct JournalCLI {
         }
         done.wait()
         return result!
+    }
+
+    // MARK: polish
+
+    /// The same request the polish shortcut sends; nothing is pasted.
+    private func polish(_ text: String, words: [String]) -> Int32 {
+        guard let gateway = SpeechGateway.configured() else {
+            print("No AI Gateway key: save one in Settings → General, or set \(GatewayKey.envName).")
+            return 1
+        }
+        switch blocking({ await gateway.polish(text, words: words) }) {
+        case .success(let polished):
+            print(polished)
+            return 0
+        case .failure(let error): return failed(message: error.message)
+        }
     }
 
     // MARK: dictate

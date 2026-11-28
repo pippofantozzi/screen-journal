@@ -1,7 +1,7 @@
 import Foundation
 import JournalCore
 
-/// Dictation's two hosted models behind the Vercel AI Gateway: one hears, one writes. Both keep nothing.
+/// Dictation's two hosted models behind the Vercel AI Gateway: one hears, one writes (and polishes). Both keep nothing.
 struct SpeechGateway: Sendable {
     static let transcriptionURL = URL(string: "https://ai-gateway.vercel.sh/v4/ai/transcription-model")!
     static let chatURL = URL(string: "https://ai-gateway.vercel.sh/v1/chat/completions")!
@@ -40,6 +40,18 @@ struct SpeechGateway: Sendable {
         do {
             body = try Rewrite.request(model: Self.writeModel, intent: intent, transcript: transcript, words: words, zeroRetention: Self.zeroRetention)
         } catch { return .failure(LabelError(message: error.localizedDescription)) }
-        return await GatewayHTTP.post(Self.chatURL, key: key, body: body, timeout: 90).flatMap(Rewrite.text)
+        return await written(body)
+    }
+
+    func polish(_ selection: String, words: [String]) async -> Result<String, LabelError> {
+        let body: Data
+        do {
+            body = try Rewrite.polishRequest(model: Self.writeModel, selection: selection, words: words, zeroRetention: Self.zeroRetention)
+        } catch { return .failure(LabelError(message: error.localizedDescription)) }
+        return await written(body)
+    }
+
+    private func written(_ body: Data) async -> Result<String, LabelError> {
+        await GatewayHTTP.post(Self.chatURL, key: key, body: body, timeout: 90).flatMap(Rewrite.text)
     }
 }

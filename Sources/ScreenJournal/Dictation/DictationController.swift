@@ -5,6 +5,7 @@ import os
 
 /// Tap the dictation key, speak, tap again: what she said is typed where her cursor is, tidied.
 /// With text highlighted when she starts, what she says is how to rewrite it. Double-tap, or the pill's buttons, pause it; Esc drops it.
+/// With text highlighted, the polish shortcut rewrites it as a clear WhatsApp message, no speech needed.
 /// A dictation's recording stays on disk until its text is pasted, so she can retry it after a failure; nothing reaches the journal.
 @MainActor
 @Observable
@@ -47,7 +48,11 @@ final class DictationController {
     var hasUnsent: Bool { unsentCount > 0 }
     var isNearLimit: Bool { elapsedSeconds >= Self.longest - Self.warningLead }
 
+    /// False when another app already holds the polish shortcut.
+    private(set) var polishShortcutWorks = false
+
     @ObservationIgnored private var watcher: KeyWatcher?
+    @ObservationIgnored private var polishShortcut: GlobalHotKey?
     @ObservationIgnored private var waitForTrust: Task<Void, Never>?
     @ObservationIgnored private let microphone = Microphone()
     @ObservationIgnored private var selection: Task<String?, Never>?
@@ -77,6 +82,40 @@ final class DictationController {
             onDoubleTap: { [weak self] in self?.togglePause() },
             onEscape: { [weak self] in self?.cancel() }
         )
+    }
+
+    func startPolishShortcut() {
+        let key = GlobalHotKey.polish
+        polishShortcut = GlobalHotKey(keyCode: key.keyCode, modifiers: key.modifiers) { [weak self] in
+            Task { await self?.polish() }
+        }
+        polishShortcutWorks = polishShortcut != nil
+    }
+
+    /// The highlighted text, pasted back over itself as a clear WhatsApp message.
+    private func polish() async {
+        switch phase {
+        case .listening, .paused, .working: return
+        case .idle, .notice: break
+        }
+        guard let gateway = SpeechGateway.configured() else { return notice(language("Connect AI in Settings → General.")) }
+        guard WindowContext.isTrusted else { return notice(language("Allow Accessibility in Settings → Dictation.")) }
+        let targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        clearNotice?.cancel()
+        isEditing = false
+        phase = .working
+        pill.show()
+        guard case .edit(let selection) = DictationIntent(selection: await Selection.read()) else {
+            return notice(language("Highlight the text first."))
+        }
+        Sounds.play(.working)
+        switch await gateway.polish(selection, words: Preferences.currentDictationWords) {
+        case .success(let polished) where !polished.isEmpty: type(polished, into: targetBundleID)
+        case .success: notice(language("Couldn't polish. Try again."))
+        case .failure(let error):
+            Self.log.error("polish failed: \(error.message, privacy: .public)")
+            notice(reason(error, otherwise: "Couldn't polish. Try again."))
+        }
     }
 
     private func toggle() {
@@ -228,8 +267,13 @@ final class DictationController {
             Self.log.error("rewrite failed: \(error.message, privacy: .public)")
             return notice(reason(error))
         }
-        rememberRecent(text)
         discard(saved)
+        type(text, into: targetBundleID)
+    }
+
+    /// Pasted where her cursor is, over any selection, and kept among the recent ones.
+    private func type(_ text: String, into targetBundleID: String?) {
+        rememberRecent(text)
         Sounds.play(.done)
         // If focus moved to another app while waiting, copy to the clipboard rather than pasting blindly.
         let currentBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -321,9 +365,9 @@ final class DictationController {
         pill.hide()
     }
 
-    private func reason(_ error: LabelError) -> String {
+    private func reason(_ error: LabelError, otherwise: String = "Couldn't transcribe. Try again.") -> String {
         if error.message.hasPrefix("401") || error.message.hasPrefix("403") { return language("The gateway refused the AI key.") }
         if error.message.hasPrefix("No reply.") { return language("No internet connection.") }
-        return language("Couldn't transcribe. Try again.")
+        return language(otherwise)
     }
 }

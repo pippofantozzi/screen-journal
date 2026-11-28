@@ -29,7 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.startNoteShortcut()
         windows.startWhatsAppTap()
         windows.startDictation()
-        windows.startWindowManager()
         windows.startAwake()
         if model.isOnboarded {
             model.start()
@@ -44,7 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         windows.stopAwake()
-        windows.stopWindowManager()
         model.stop()
     }
 
@@ -68,7 +66,6 @@ final class WindowPresenter {
     private var whatsappTap: KeyWatcher?
     private var waitForWhatsAppTrust: Task<Void, Never>?
     let dictation = DictationController()
-    let windowManager = WindowManagerController()
     let awake = AwakeController()
 
     init(model: AppModel) {
@@ -102,7 +99,6 @@ final class WindowPresenter {
             SettingsView(
                 model: self.model,
                 dictation: self.dictation,
-                windowManager: self.windowManager,
                 awake: self.awake,
                 noteShortcutWorks: self.noteShortcutWorks
             ) { [weak self] in self?.showGuide() }
@@ -153,14 +149,7 @@ final class WindowPresenter {
         // Any Keychain prompt shows now, not in the middle of her first dictation.
         _ = GatewayKey.current()
         dictation.use(Preferences.currentDictationKey)
-    }
-
-    func startWindowManager() {
-        windowManager.start()
-    }
-
-    func stopWindowManager() {
-        windowManager.stop()
+        dictation.startPolishShortcut()
     }
 
     func startAwake() {
