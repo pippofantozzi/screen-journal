@@ -1,12 +1,20 @@
 import JournalCore
-import PaneCore
 import SwiftUI
 
 struct StatusIcon: View {
     let model: AppModel
+    let awake: AwakeController
 
     var body: some View {
-        Image(systemName: symbol)
+        if awake.isActive, !awake.countdownText.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: symbol)
+                Text(awake.countdownText)
+                    .monospacedDigit()
+            }
+        } else {
+            Image(systemName: symbol)
+        }
     }
 
     private var symbol: String {
@@ -22,11 +30,20 @@ struct StatusIcon: View {
 struct MenuContent: View {
     let model: AppModel
     let windows: WindowPresenter
-    @AppStorage(Preferences.windowManagerEnabled) private var windowManagerEnabled = true
     @Environment(\.language) private var language
+
+    private var awake: AwakeController { windows.awake }
 
     var body: some View {
         Text(headline)
+
+        if let awakeLine {
+            Text(awakeLine)
+        }
+
+        if let error = awake.lastError {
+            Text(error)
+        }
 
         if model.status == .needsScreenAccess {
             Button(language("Turn Screen Access Back On…")) { windows.showOnboarding(at: .screenAccess) }
@@ -43,38 +60,11 @@ struct MenuContent: View {
         } else {
             Button(language("Resume")) { model.resume() }
         }
-        Button(language("Forget Last 15 Minutes…")) { windows.confirmForgetRecent(minutes: 15) }
-        // Shows ⌥Space beside the item, so the menu teaches the shortcut that works everywhere.
-        Button(language("Note This Moment…")) { windows.showNote() }
-            .keyboardShortcut(.space, modifiers: .option)
-        // In WhatsApp, a tap of Left ⌘ opens it too; a menu can't show a lone modifier.
-        Button(language("Export WhatsApp Chat…")) { windows.showWhatsAppExport() }
-        Button(language("Your Week…")) { windows.showWeek() }
 
-        if windowManagerEnabled {
-            windowsMenu
-        }
-
-        if windows.dictation.hasUnsent {
-            Divider()
-            Button(windows.dictation.unsentCount > 1
-                ? language("Retry Last Dictation (%@)", "\(windows.dictation.unsentCount)")
-                : language("Retry Last Dictation")) {
-                windows.dictation.retry()
-            }
-            Button(language("Discard Unsent Dictation")) { windows.dictation.discardLastUnsent() }
-        }
-        if !windows.dictation.recent.isEmpty {
-            Menu(language("Recent Dictations")) {
-                ForEach(Array(windows.dictation.recent.enumerated()), id: \.offset) { _, text in
-                    Button(preview(text)) { windows.dictation.copyRecent(text) }
-                }
-            }
-        }
+        awakeMenu
 
         Divider()
 
-        // One place for everything else, so there's never a second place to look.
         Button(language("Settings…")) { windows.showSettings() }
             .keyboardShortcut(",")
 
@@ -84,60 +74,49 @@ struct MenuContent: View {
             .keyboardShortcut("q")
     }
 
-    private var windowsMenu: some View {
-        let wm = windows.windowManager
-        return Menu(language("Windows")) {
-            Text(wm.profile.summary)
-            if !wm.isTrusted {
-                Button(language("Allow Accessibility…"), action: WindowContext.requestTrust)
+    @ViewBuilder
+    private var awakeMenu: some View {
+        if awake.isActive {
+            Menu(language("Keep Awake · %@", awake.countdownText)) {
+                Button(language("Extend +30 Minutes")) {
+                    Task { _ = await awake.extendSession(by: 30 * 60) }
+                }
+                Button(language("Extend +1 Hour")) {
+                    Task { _ = await awake.extendSession(by: 60 * 60) }
+                }
+                Button(language("Extend +2 Hours")) {
+                    Task { _ = await awake.extendSession(by: 2 * 60 * 60) }
+                }
+                Divider()
+                Button(language("Stop Keeping Awake")) {
+                    Task { _ = await awake.endSession(reason: .user) }
+                }
             }
-            Divider()
-            Button(wm.isDropAndSendActive
-                ? language("Restore from Drop & Send (⌃⌥W)")
-                : language("Drop & Send (⌃⌥W)")) {
-                Task { _ = await wm.perform(.send) }
+        } else {
+            Menu(language("Keep Awake")) {
+                Button(language("30 Minutes")) {
+                    Task { _ = await awake.startSession(duration: 30 * 60) }
+                }
+                Button(language("1 Hour")) {
+                    Task { _ = await awake.startSession(duration: 60 * 60) }
+                }
+                Button(language("2 Hours")) {
+                    Task { _ = await awake.startSession(duration: 2 * 60 * 60) }
+                }
+                Button(language("4 Hours")) {
+                    Task { _ = await awake.startSession(duration: 4 * 60 * 60) }
+                }
+                Button(language("8 Hours")) {
+                    Task { _ = await awake.startSession(duration: 8 * 60 * 60) }
+                }
             }
-            Button(language("Dev Split (⌃⌥1)")) {
-                Task { _ = await wm.perform(.dev) }
-            }
-            Button(language("Swap Right Browser (⌃⌥B)")) {
-                Task { _ = await wm.perform(.swapBrowser) }
-            }
-            Button(language("Dual Browser Split (⌃⌥2)")) {
-                Task { _ = await wm.perform(.dualBrowser) }
-            }
-            Button(wm.isGrokDrawerActive
-                ? language("Hide Grok Bot Drawer (⌃⌥G)")
-                : language("Grok Bot Drawer (⌃⌥G)")) {
-                Task { _ = await wm.perform(.grok) }
-            }
-            Divider()
-            Button(language("Left Half (⌃⌥←)")) {
-                Task { _ = await wm.perform(.snapLeft) }
-            }
-            Button(language("Right Half (⌃⌥→)")) {
-                Task { _ = await wm.perform(.snapRight) }
-            }
-            Button(language("Maximize (⌃⌥↩)")) {
-                Task { _ = await wm.perform(.snapMax) }
-            }
-            Button(language("Left Third (⌃⌥[)")) {
-                Task { _ = await wm.perform(.snapLeftThird) }
-            }
-            Button(language("Right Two-Thirds (⌃⌥])")) {
-                Task { _ = await wm.perform(.snapRightTwoThirds) }
-            }
-            Divider()
-            Button(language("Undo Layout (⌃⌥U)")) {
-                Task { _ = await wm.perform(.undo) }
-            }
-            .disabled(wm.undoDepth == 0)
         }
     }
 
-    private func preview(_ text: String) -> String {
-        let singleLine = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
-        return singleLine.count > 48 ? String(singleLine.prefix(48)) + "…" : singleLine
+    private var awakeLine: String? {
+        guard let session = awake.session else { return nil }
+        let until = session.endsAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(language.locale))
+        return language("Awake · %@ left (until %@)", awake.countdownText, until)
     }
 
     private var headline: String {

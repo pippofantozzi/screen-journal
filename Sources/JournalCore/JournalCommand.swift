@@ -14,6 +14,9 @@ public enum Launch: Equatable, Sendable {
         if words.first == "pane" {
             return .command(.pane(Array(words.dropFirst())), root: nil)
         }
+        if words.first == "awake" {
+            return .command(.awake(Array(words.dropFirst())), root: nil)
+        }
         guard let name = words.first(where: JournalCommand.names.contains) else {
             if words.isEmpty { return .app }
             if words.contains(where: ["--help", "-h", "help"].contains) { return .help(JournalCommand.usage) }
@@ -60,12 +63,14 @@ public enum JournalCommand: Equatable, Sendable {
     case whatsapp(chat: String?, last: Int, out: String?)
     /// Invokes a built-in Pane window manager command on the running app.
     case pane([String])
+    /// Controls Keep Awake sessions on the running app or runs the recovery backstop.
+    case awake([String])
 
     public struct Usage: Error, Equatable {
         public let message: String
     }
 
-    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp", "pane"]
+    static let names: Set<String> = ["forget", "tidy", "rebuild", "label", "cases", "dictate", "whatsapp", "pane", "awake"]
 
     static let usage = """
     Usage:
@@ -78,6 +83,7 @@ public enum JournalCommand: Equatable, Sendable {
       ScreenJournal dictate --audio <file.wav> [--selection <text>] [--word <name> …] [--language portuguese|english|automatic]
       ScreenJournal whatsapp [--chat <name>] [--last 200] [--out <folder>]
       ScreenJournal pane <send|dev|swap-browser|dual-browser|grok|undo|snap|summon|status>
+      ScreenJournal awake <start|extend|stop|status|backstop>
     """
 
     fileprivate static func parse(_ name: String, _ options: inout Options, timeZone: TimeZone) -> Result<JournalCommand, Usage> {

@@ -9,7 +9,7 @@ struct ScreenJournalApp: App {
         MenuBarExtra {
             Localized { MenuContent(model: delegate.model, windows: delegate.windows) }
         } label: {
-            StatusIcon(model: delegate.model)
+            StatusIcon(model: delegate.model, awake: delegate.windows.awake)
         }
     }
 }
@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.startWhatsAppTap()
         windows.startDictation()
         windows.startWindowManager()
+        windows.startAwake()
         if model.isOnboarded {
             model.start()
             if model.shouldAskForContext {
@@ -42,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        windows.stopAwake()
         windows.stopWindowManager()
         model.stop()
     }
@@ -67,6 +69,7 @@ final class WindowPresenter {
     private var waitForWhatsAppTrust: Task<Void, Never>?
     let dictation = DictationController()
     let windowManager = WindowManagerController()
+    let awake = AwakeController()
 
     init(model: AppModel) {
         self.model = model
@@ -100,6 +103,7 @@ final class WindowPresenter {
                 model: self.model,
                 dictation: self.dictation,
                 windowManager: self.windowManager,
+                awake: self.awake,
                 noteShortcutWorks: self.noteShortcutWorks
             ) { [weak self] in self?.showGuide() }
         }
@@ -157,6 +161,14 @@ final class WindowPresenter {
 
     func stopWindowManager() {
         windowManager.stop()
+    }
+
+    func startAwake() {
+        awake.start()
+    }
+
+    func stopAwake() {
+        awake.stopSync()
     }
 
     /// A floating panel that takes typing without activating the app: her app stays in front,

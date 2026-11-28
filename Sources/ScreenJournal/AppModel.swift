@@ -19,6 +19,11 @@ enum Preferences {
     static let dictationMicrophone = "dictationMicrophone"
     static let whatsappLast = "whatsappLast"
     static let windowManagerEnabled = "windowManagerEnabled"
+    static let awakeKeepDisplay = "awakeKeepDisplay"
+    static let awakeLowPowerOnLidClose = "awakeLowPowerOnLidClose"
+    static let awakeLowPowerFloor = "awakeLowPowerFloor"
+    static let awakeEndFloor = "awakeEndFloor"
+    static let awakeThermalRules = "awakeThermalRules"
 
     /// For AppKit, which reads it once when a window opens; SwiftUI views follow it live through `Localized`.
     static var currentLanguage: Language {
@@ -27,6 +32,17 @@ enum Preferences {
 
     static var isWindowManagerEnabled: Bool {
         UserDefaults.standard.object(forKey: windowManagerEnabled) as? Bool ?? true
+    }
+
+    static var currentAwakeConfig: AwakeConfig {
+        let d = UserDefaults.standard
+        return AwakeConfig(
+            keepDisplayAwake: d.bool(forKey: awakeKeepDisplay),
+            lowPowerOnLidClose: d.object(forKey: awakeLowPowerOnLidClose) as? Bool ?? true,
+            lowPowerFloor: d.object(forKey: awakeLowPowerFloor) as? Int ?? 40,
+            endFloor: d.object(forKey: awakeEndFloor) as? Int ?? 10,
+            thermalRules: d.object(forKey: awakeThermalRules) as? Bool ?? true
+        )
     }
 
     static var currentDictationKey: DictationKey {
@@ -71,6 +87,8 @@ enum Preferences {
             language: Language.default.rawValue, dictationKey: DictationKey.rightCommand.rawValue, dictationWords: [String](),
             dictationLanguage: DictationLanguage.default.rawValue, dictationMicrophone: "",
             windowManagerEnabled: true,
+            awakeKeepDisplay: false, awakeLowPowerOnLidClose: true,
+            awakeLowPowerFloor: 40, awakeEndFloor: 10, awakeThermalRules: true,
         ])
     }
 }

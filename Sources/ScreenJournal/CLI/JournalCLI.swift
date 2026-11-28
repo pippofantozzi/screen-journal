@@ -24,6 +24,9 @@ struct JournalCLI {
         if case let .pane(arguments) = command {
             return PaneCLI.run(arguments: arguments)
         }
+        if case let .awake(arguments) = command {
+            return AwakeCLI.run(arguments: arguments)
+        }
         guard FileManager.default.fileExists(atPath: store.daysDir.path) else {
             print("No journal at \(store.root.path).")
             return 1
@@ -34,7 +37,7 @@ struct JournalCLI {
         case .rebuild: return withAppQuit { rebuild() }
         case let .label(day, titlesOnly, apply): return label(day: day, titlesOnly: titlesOnly, apply: apply)
         case let .cases(day, out, apply): return cases(day: day, out: URL(filePath: out), apply: apply)
-        case .dictate, .whatsapp, .pane: return 0
+        case .dictate, .whatsapp, .pane, .awake: return 0
         }
     }
 

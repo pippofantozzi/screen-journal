@@ -22,6 +22,13 @@ struct JournalCommandTests {
         #expect(launch("pane", "--help") == .command(.pane(["--help"]), root: nil))
     }
 
+    @Test func routesAwakeSubcommandArgumentsVerbatim() {
+        #expect(launch("awake", "start", "2h") == .command(.awake(["start", "2h"]), root: nil))
+        #expect(launch("awake", "stop") == .command(.awake(["stop"]), root: nil))
+        #expect(launch("awake", "status", "--json") == .command(.awake(["status", "--json"]), root: nil))
+        #expect(launch("awake", "backstop") == .command(.awake(["backstop"]), root: nil))
+    }
+
     @Test func exportsAWhatsAppChat() {
         #expect(launch("whatsapp") == .command(.whatsapp(chat: nil, last: 200, out: nil), root: nil))
         #expect(launch("whatsapp", "--chat", "Bru", "--last", "50", "--out", "/tmp")
