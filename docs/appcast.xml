@@ -4,6 +4,15 @@
     <title>Screen Journal</title>
     <!-- items -->
     <item>
+      <title>0.13.0</title>
+      <description><![CDATA[Highlight a message and press Ctrl+Option+P to polish it for WhatsApp: better grammar, clearer sentences, tidy formatting. Adds Keep Awake in the menu bar to stop the Mac sleeping for a set time. The window shortcuts and Settings → Windows are removed.]]></description>
+      <pubDate>Fri, 27 Nov 2026 21:54:54 -0300</pubDate>
+      <sparkle:version>49</sparkle:version>
+      <sparkle:shortVersionString>0.13.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/pippofantozzi/screen-journal/releases/download/v0.13.0/ScreenJournal.zip" type="application/octet-stream" sparkle:edSignature="LjqcLbE6LmmnSP32e3SWs3OP1U8WChgSy2wgazYCHA+M7thq8iaSNRKmFLeTodmrnhVA0gRtTxn8n6W7P851DA==" length="4515108"/>
+    </item>
+    <item>
       <title>0.12.0</title>
       <description><![CDATA[Adds built-in window management (Ctrl+Option shortcuts for Drop & Send, Dev Split, Browser Swap, Grok Bot drawer, snaps, and undo), toggleable in Settings → Windows.]]></description>
       <pubDate>Fri, 27 Nov 2026 17:11:53 -0300</pubDate>
